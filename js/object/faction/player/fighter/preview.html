@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceSurvivor Fighter Preview</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #1a1a1a;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            flex-direction: column;
+            overflow-y: auto;
+            padding-bottom: 50px;
+        }
+        canvas {
+            background: radial-gradient(circle at center, #2c3e50 0%, #000000 100%);
+            border: 1px solid #444;
+            box-shadow: 0 0 50px rgba(0, 240, 255, 0.1);
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+            color: #aaa;
+            position: sticky;
+            bottom: 0;
+            background: #1a1a1a;
+            width: 100%;
+            padding: 10px;
+        }
+        h1 {
+            margin-top: 30px;
+            margin-bottom: 10px;
+            font-weight: 300;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <h1>FIGHTER HANGAR PREVIEW</h1>
+    <canvas id="previewCanvas" width="500" height="2000"></canvas>
+    <div class="controls">
+        <p>Customized Squad: F-16 Viper | J-20 Mighty Dragon | F-22 Raptor | Su-57 Felon</p>
+    </div>
+
+    <script type="module">
+        import FighterFactory from './FighterFactory.js';
+        import EquipmentFactory from '../equipment/EquipmentFactory.js';
+
+        const canvas = document.getElementById('previewCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Instantiate fighters with Custom Loadouts
+
+        // 1. F-16: Jungle Striker
+        const f16 = FighterFactory.createFighter('F-16');
+        f16.setColor('#2E86C1'); // Base Blue
+        f16.setSkin(EquipmentFactory.create('skin_camo_jungle')); // Jungle Camo
+        f16.setWeapon(EquipmentFactory.create('missile_sidewinder')); // Sidewinders
+        f16.setEngine(EquipmentFactory.create('engine_afterburner')); // Orange Afterburner
+        f16.name = "F-16 Jungle Viper";
+        f16.desc = "丛林迷彩涂装，装备响尾蛇导弹与加力燃烧室。";
+
+        // 2. J-20: Golden Dragon
+        const j20 = FighterFactory.createFighter('J-20');
+        j20.setColor('#17202A'); // Dark Base
+        j20.setSkin(EquipmentFactory.create('skin_gold_elite')); // Gold Plating
+        j20.setWeapon(EquipmentFactory.create('weapon_meteor')); // Meteor Missiles
+        j20.setEngine(EquipmentFactory.create('engine_plasma')); // Purple Plasma
+        j20.name = "J-20 Golden Dragon";
+        j20.desc = "精英黄金涂装，搭载流星远程导弹与等离子引擎。";
+
+        // 3. F-22: Arctic Stealth
+        const f22 = FighterFactory.createFighter('F-22');
+        f22.setColor('#AED6F1'); // Light Blue Base
+        f22.setSkin(EquipmentFactory.create('skin_arctic')); // Arctic Camo
+        f22.setWeapon(EquipmentFactory.create('missile_aim120')); // AMRAAMs
+        f22.setEngine(EquipmentFactory.create('engine_ion')); // Blue Ion
+        f22.name = "F-22 Arctic Ghost";
+        f22.desc = "极地迷彩涂装，配备AIM-120与离子推进器。";
+
+        // 4. Su-57: Desert Storm
+        const su57 = FighterFactory.createFighter('Su-57');
+        su57.setColor('#E59866'); // Sand Base
+        su57.setSkin(EquipmentFactory.create('skin_digital_desert')); // Digital Desert
+        su57.setWeapon(EquipmentFactory.create('missile_sidewinder')); // Sidewinders (Dogfight)
+        su57.setRadar(EquipmentFactory.create('radar_aesa')); // AESA Radar
+        su57.name = "Su-57 Desert Storm";
+        su57.desc = "沙漠数码迷彩，强化近距格斗配置。";
+
+        const fighters = [
+            f16,
+            j20,
+            f22,
+            su57
+        ];
+
+
+        // Layout configuration
+        const startY = 180;
+        const spacing = 470; // Adjusted for 150px visual gap (320px block + 150px gap)
+        const centerX = 250;
+
+        let lastTime = performance.now();
+
+        function loop(currentTime) {
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            // Clear background
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const gridSize = 50;
+            for(let x=0; x<canvas.width; x+=gridSize) { ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); }
+            for(let y=0; y<canvas.height; y+=gridSize) { ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); }
+            ctx.stroke();
+
+            fighters.forEach((fighter, index) => {
+                // Update animation state
+                fighter.update(dt);
+
+                // Calculate position
+                const x = centerX;
+                const y = startY + index * spacing;
+                
+                ctx.save();
+                ctx.translate(x, y);
+                
+                // Draw name tag
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.font = 'bold 24px "Microsoft YaHei", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(fighter.name, 0, -130);
+                
+                // Draw description
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.font = '14px "Microsoft YaHei", sans-serif';
+                ctx.fillText(fighter.desc, 0, 150);
+
+                // Show Equipment
+                const weapon = fighter.getWeapon();
+                const radar = fighter.getRadar();
+                const engine = fighter.slots.engine;
+                const skin = fighter.slots.skin;
+                
+                ctx.fillStyle = '#F4D03F';
+                ctx.font = '12px "Microsoft YaHei", sans-serif';
+                let txt = "";
+                if (weapon) txt += `[武器: ${weapon.name}] `;
+                if (skin) txt += `[涂装: ${skin.name}] `;
+                ctx.fillText(txt, 0, 125);
+                
+                let txt2 = "";
+                if (engine) txt2 += `[引擎: ${engine.name}] `;
+                if (radar) txt2 += `[雷达: ${radar.name}]`;
+                if (txt2) ctx.fillText(txt2, 0, 140); // Second line
+
+                // Stats Bar (HP/Speed)
+                const barWidth = 100;
+                const barHeight = 4;
+                
+                // HP
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(-barWidth - 10, 170, barWidth * (fighter.hp/150), barHeight);
+                ctx.fillStyle = '#555';
+                ctx.fillRect(-barWidth - 10 + barWidth * (fighter.hp/150), 170, barWidth * (1 - fighter.hp/150), barHeight);
+                ctx.fillStyle = '#aaa';
+                ctx.font = '12px "Microsoft YaHei", sans-serif';
+                ctx.fillText(`装甲 ${fighter.hp}`, -barWidth/2 - 10, 185);
+
+                // Speed
+                ctx.fillStyle = '#3498db';
+                ctx.fillRect(10, 170, barWidth * (fighter.speed/15), barHeight);
+                ctx.fillStyle = '#555';
+                ctx.fillRect(10 + barWidth * (fighter.speed/15), 170, barWidth * (1 - fighter.speed/15), barHeight);
+                ctx.fillStyle = '#aaa';
+                ctx.fillText(`机动 ${fighter.speed}`, 10 + barWidth/2, 185);
+
+                // Firepower (Damage)
+                const fireY = 200;
+                ctx.fillStyle = '#f39c12'; // Orange
+                ctx.fillRect(-barWidth/2, fireY, barWidth * (fighter.damage/25), barHeight); // Scaled for higher damage
+                ctx.fillStyle = '#555';
+                ctx.fillRect(-barWidth/2 + barWidth * (fighter.damage/25), fireY, barWidth * (1 - fighter.damage/25), barHeight);
+                ctx.fillStyle = '#aaa';
+                ctx.fillText(`火力 ${fighter.damage}`, 0, fireY + 15);
+
+                // Render Fighter
+                // We use a large size to show off details
+                fighter.render(ctx, 140);
+                
+                ctx.restore();
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>

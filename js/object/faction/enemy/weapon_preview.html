@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weapon System Preview - SpaceSurvivor</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050505;
+            color: #eee;
+            font-family: 'Segoe UI', monospace;
+            overflow: hidden;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+        h1 { margin: 0 0 5px 0; font-size: 1.2em; color: #ff5555; }
+        p { margin: 0; font-size: 0.9em; color: #aaa; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 5px 15px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        button:hover { background: #555; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1>Weapon Systems Test Range</h1>
+        <p>Move Mouse to control Target (Green Crosshair)</p>
+        <p>Displaying 12 Random Weapon Configurations</p>
+    </div>
+    
+    <div id="controls">
+        <button onclick="window.location.reload()">Regenerate Weapons</button>
+    </div>
+    
+    <div id="error-log" style="position:fixed; bottom:0; left:0; width:100%; background:rgba(255,0,0,0.8); color:white; font-family:monospace; padding:10px; display:none; z-index:1000;"></div>
+
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        window.onerror = function(msg, url, line, col, error) {
+            const log = document.getElementById('error-log');
+            log.style.display = 'block';
+            log.innerHTML += `<div>Error: ${msg} <br> ${url}:${line}:${col}</div>`;
+            console.error(error);
+        };
+
+        import EnemyFactory from './EnemyFactory.js';
+        import { WeaponStrategies } from './strategy/weapon.js';
+        import Bullet from '../../bullet.js'; 
+        import SeededRandom from '../../../utils/SeededRandom.js'; 
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Resize
+        let width, height;
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Mock Objects ---
+
+        // The Player Target
+        const target = {
+            x: width / 2,
+            y: height - 200,
+            active: true,
+            width: 30,
+            height: 30
+        };
+
+        // Bullet Manager
+        const bullets = [];
+        const mockScene = {
+            spawnEnemyBullet: (x, y, angle, speed, config) => {
+                // Adjust angle to point somewhat towards target if it's not a pattern that overrides it?
+                // Actually WeaponStrategies handles angle.
+                // However, '0' is usually straight right in math, but in this game -90 is up, 90 is down?
+                // Let's check bullet.js: 
+                // "Move bullet based on angle... -90 degrees is up (standard canvas 0 is right)"
+                // Enemy WeaponStrategies usually fire at '0' which implies Right?
+                // Wait, let's check WeaponStrategies. STRAIGHT fires at 0.
+                // If 0 is Right, then enemies firing 0 are shooting sideways.
+                // Usually in top-down shooters, 90 is down.
+                // Let's assume the game uses 90 for down or the sprite is rotated.
+                // For this preview, let's assume we want to fire DOWN (90 degrees).
+                // But wait, the Strategy code says: `spawnEnemyBullet(..., 0, speed)` for STRAIGHT.
+                // If 0 is right, that's wrong for a vertical scroller.
+                // Let's check MovementStrategies: "angle = Math.PI / 2; // For movement math (radians, pointing down)"
+                // So 90 deg is down.
+                // If WeaponStrategy passes 0, it shoots Right.
+                // Maybe the existing code assumes 0 is Down?
+                // Bullet.js: "rad = this.angle * Math.PI / 180; x += cos(rad)..."
+                // cos(0) = 1 (X+), sin(0) = 0. So 0 is Right.
+                // If enemies fire at 0, they fire Right.
+                // Let's Auto-Rotate the entire emitter logic by 90 degrees for this preview? 
+                // Or just fix the base angle in spawn.
+                
+                // Hack: Rotate all spawn angles by 90 degrees so they fire Down.
+                const correctedAngle = angle + 90; 
+
+                const b = new Bullet(x, y, correctedAngle, speed, 10, true, config, target);
+                bullets.push(b);
+            }
+        };
+
+        // Emitters (Enemies)
+        const emitters = [];
+        const rows = 2;
+        const cols = 4; // Reduced columns to fit text
+        const padX = width / (cols + 1);
+        const padY = 250; // More vertical space
+
+        // Generate Emitters
+        const rng = new SeededRandom(Date.now()); // Random seed every reload
+        
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const x = padX * (c + 1);
+                const y = 150 + r * 350; // More spacing
+                
+                // Generate a random weapon config
+                // We use a random ID to get varied results
+                const id = Math.floor(Math.random() * 10000);
+                // We need to access generateWeaponConfig. It's static in EnemyFactory.
+                // It needs an RNG, type, damage, colors.
+                const subRng = new SeededRandom(id);
+                const weaponConfig = EnemyFactory.generateWeaponConfig(subRng, 'FIGHTER', 10, { glow: '#fff' });
+
+                emitters.push({
+                    x: x,
+                    y: y,
+                    width: 40,
+                    height: 40,
+                    config: {
+                        weaponConfig: weaponConfig,
+                        weapon: 'PROCEDURAL'
+                    },
+                    scene: mockScene,
+                    // State for strategies
+                    fireTimer: 0,
+                    weaponAngle: 0,
+                    
+                    // Render info
+                    name: weaponConfig.name,
+                    description: weaponConfig.description,
+                    stats: `DMG: ${weaponConfig.damage} | SPD: ${weaponConfig.speed} | RATE: ${weaponConfig.rate}`
+                });
+            }
+        }
+
+        // --- Loop ---
+        let lastTime = performance.now();
+
+        function loop() {
+            const now = performance.now();
+            const dt = (now - lastTime) / 1000;
+            lastTime = now;
+
+            // Update Target (Mouse)
+            // (Handled by event listener)
+
+            // Clear
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw Grid/BG
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let i=0; i<width; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,height); }
+            for(let i=0; i<height; i+=50) { ctx.moveTo(0,i); ctx.lineTo(width,i); }
+            ctx.stroke();
+
+            // Render Target
+            ctx.strokeStyle = '#0f0';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(target.x, target.y, 20, 0, Math.PI*2);
+            ctx.moveTo(target.x - 30, target.y); ctx.lineTo(target.x + 30, target.y);
+            ctx.moveTo(target.x, target.y - 30); ctx.lineTo(target.x, target.y + 30);
+            ctx.stroke();
+
+            // Update & Render Emitters
+            emitters.forEach(e => {
+                // Update Weapon Strategy
+                WeaponStrategies.PROCEDURAL.update(e, dt);
+
+                // Render Emitter Box
+                ctx.strokeStyle = e.config.weaponConfig.color;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(e.x - 20, e.y - 20, 40, 40);
+                
+                // Render Label
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = e.config.weaponConfig.color;
+                ctx.font = 'bold 14px "Segoe UI", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(e.name || 'Unknown System', e.x, e.y + 40);
+
+                ctx.fillStyle = '#666';
+                ctx.font = '10px monospace';
+                ctx.fillText(e.stats || 'Stats N/A', e.x, e.y + 55);
+
+                ctx.fillStyle = '#999';
+                ctx.font = 'italic 11px "Segoe UI", sans-serif';
+                
+                // Simple word wrap
+                const maxW = 220;
+                const descText = e.description || "No description available.";
+                const words = descText.split(' ');
+                let line = '';
+                let yOff = 70;
+                
+                for(let n = 0; n < words.length; n++) {
+                    const testLine = line + words[n] + ' ';
+                    const metrics = ctx.measureText(testLine);
+                    if (metrics.width > maxW && n > 0) {
+                        ctx.fillText(line, e.x, e.y + yOff);
+                        line = words[n] + ' ';
+                        yOff += 14;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                ctx.fillText(line, e.x, e.y + yOff);
+            });
+
+            // Update & Render Bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.update(dt);
+                b.render(ctx);
+                if (!b.active) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // Mouse Move
+        window.addEventListener('mousemove', e => {
+            target.x = e.clientX;
+            target.y = e.clientY;
+        });
+
+        loop();
+
+    </script>
+</body>
+</html>

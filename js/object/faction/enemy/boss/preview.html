@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Titan Battleship Preview</title>
+    <style>
+        body { background: #111; color: #eee; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        canvas { background: #000; border: 1px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .controls { margin-top: 10px; text-align: center; }
+        .key { display: inline-block; padding: 2px 6px; background: #333; border-radius: 4px; border: 1px solid #555; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Titan-Class Dreadnought Preview</h1>
+    <canvas id="gameCanvas" width="1000" height="800"></canvas>
+    <div class="controls">
+        <p>Move mouse to control target (Simulated Player)</p>
+        <p>Press <span class="key">1</span> for Phase 1 | <span class="key">2</span> for Phase 2 (Enraged)</p>
+        <div id="status"></div>
+    </div>
+
+    <script type="module">
+        import TitanBattleship from './TitanBattleship.js';
+        import Bullet from '../../../bullet.js';
+        
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Mock Scene
+        const scene = {
+            player: { x: 500, y: 700, active: true, hp: 100 },
+            bullets: [],
+            enemies: [], // For minions
+            effectManager: {
+                shake: (amt, dur) => {
+                    canvas.style.transform = `translate(${Math.random()*amt - amt/2}px, ${Math.random()*amt - amt/2}px)`;
+                    setTimeout(() => canvas.style.transform = 'none', dur * 1000);
+                },
+                spawnFloatingText: (text, x, y, color) => console.log(`Text: ${text} at ${x},${y}`),
+                spawnParticle: (x, y, color) => {}
+            },
+            width: 1000,
+            height: 800
+        };
+
+        // Instantiate Boss
+        const boss = new TitanBattleship(500, 200, scene);
+        
+        // Mouse interaction
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            scene.player.x = e.clientX - rect.left;
+            scene.player.y = e.clientY - rect.top;
+        });
+
+        // Key interaction
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '1') boss.phase = 1;
+            if (e.key === '2') boss.enterPhase(2);
+        });
+
+        // Loop
+        let lastTime = performance.now();
+        function loop(now) {
+            const dt = (now - lastTime) / 1000;
+            lastTime = now;
+
+            // Clear
+            ctx.fillStyle = '#050505'; // Deep space
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grid
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let i=0; i<1000; i+=50) {
+                ctx.moveTo(i, 0); ctx.lineTo(i, 800);
+            }
+            for(let i=0; i<800; i+=50) {
+                ctx.moveTo(0, i); ctx.lineTo(1000, i);
+            }
+            ctx.stroke();
+
+            // Update & Render Boss
+            boss.update(dt);
+            boss.render(ctx);
+
+            // Update & Render Minions
+            scene.enemies.forEach((enemy, index) => {
+                // Mock update for Minion (Enemy class)
+                if (enemy.update) enemy.update(dt);
+                if (enemy.render) enemy.render(ctx);
+                
+                // Simple cleanup
+                if (enemy.y > 900) scene.enemies.splice(index, 1);
+            });
+
+            // Update & Render Bullets
+            for (let i = scene.bullets.length - 1; i >= 0; i--) {
+                const b = scene.bullets[i];
+                b.update(dt);
+                b.render(ctx);
+                if (!b.active || b.y > 850 || b.y < -50 || b.x < -50 || b.x > 1050) {
+                    scene.bullets.splice(i, 1);
+                }
+            }
+
+            // Draw Player Target
+            ctx.fillStyle = '#00ff00';
+            ctx.beginPath();
+            ctx.arc(scene.player.x, scene.player.y, 10, 0, Math.PI*2);
+            ctx.fill();
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(scene.player.x, scene.player.y, 20, 0, Math.PI*2);
+            ctx.stroke();
+
+            // Status
+            document.getElementById('status').innerHTML = `
+                Phase: ${boss.phase}<br>
+                HP: ${boss.hp} / ${boss.maxHp} | Shield: ${boss.shield}<br>
+                Turrets: ${boss.turrets.length} | Minions: ${scene.enemies.length} | Bullets: ${scene.bullets.length}
+            `;
+
+            requestAnimationFrame(loop);
+        }
+
+        loop(performance.now());
+    </script>
+</body>
+</html>
