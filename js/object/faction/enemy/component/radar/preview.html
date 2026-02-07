@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Radar Component Preview - Tech Upgrade</title>
+    <style>
+        body { 
+            background: #020202; 
+            color: #eee; 
+            font-family: 'Segoe UI', 'Roboto', monospace; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #00ff66;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            font-size: 24px;
+            text-shadow: 0 0 15px rgba(0, 255, 100, 0.5);
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            width: 100%;
+            text-align: center;
+            max-width: 1200px;
+        }
+        .canvas-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 255, 100, 0.05);
+            border: 1px solid #222;
+            background: #080808;
+            border-radius: 4px;
+            padding: 2px;
+        }
+        canvas { 
+            display: block; 
+            background: radial-gradient(circle at center, #111 0%, #000 100%);
+        }
+        .controls { 
+            margin-top: 20px; 
+            text-align: center; 
+            color: #666; 
+            max-width: 1200px;
+            line-height: 1.5;
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            border-top: 1px solid #222;
+            padding-top: 15px;
+        }
+        .tech-text {
+            font-family: 'Courier New', monospace;
+            color: #444;
+            font-size: 0.8em;
+        }
+        .status-panel {
+            display: flex;
+            gap: 20px;
+        }
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #00ff66;
+            border-radius: 50%;
+            box-shadow: 0 0 5px #00ff66;
+        }
+    </style>
+</head>
+<body>
+    <h1>Radar System // Tech Upgrade V3.0</h1>
+    
+    <div class="canvas-container">
+        <canvas id="radarCanvas" width="1200" height="450"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="status-panel">
+             <div class="status-item"><div class="status-dot"></div><div>SYSTEM ONLINE</div></div>
+             <div class="status-item"><div class="status-dot" style="background:#00ccff;box-shadow:0 0 5px #00ccff"></div><div>SCANNING</div></div>
+        </div>
+        <div class="tech-text">
+            MODULES: AESA | PARABOLIC | WAVEGUIDE | GEODESIC | AWACS<br>
+            FEATURES: HOLO-RINGS | DATA-PARTICLES | DIGITAL-SCAN | HEX-PING
+        </div>
+    </div>
+
+    <script type="module">
+        import RadarSystem from './RadarSystem.js';
+
+        const canvas = document.getElementById('radarCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Create 5 different radars with adjusted ranges to prevent overlap
+        const radars = [
+            { 
+                label: "PHASED ARRAY",
+                sys: new RadarSystem({ type: 'ARRAY', color: '#00ff66', speed: 2.0, range: 90 }) 
+            },
+            { 
+                label: "PARABOLIC DISH",
+                sys: new RadarSystem({ type: 'DISH', color: '#ffaa00', speed: 1.5, range: 90 }) 
+            },
+            { 
+                label: "SCANNING BAR",
+                sys: new RadarSystem({ type: 'BAR', color: '#00ccff', speed: 3.0, range: 90 }) 
+            },
+            { 
+                label: "OMNI-DOME",
+                sys: new RadarSystem({ type: 'DOME', color: '#ff0055', speed: 1.0, range: 90 }) 
+            },
+            { 
+                label: "AWACS SAUCER",
+                sys: new RadarSystem({ type: 'SAUCER', color: '#ffff00', speed: 0.8, range: 90 }) 
+            }
+        ];
+
+        // Layout positions
+        const spacing = 240; // Increased spacing
+        const startX = 120;
+        const centerY = 200;
+
+        let lastTime = performance.now();
+
+        function loop(now) {
+            const dt = (now - lastTime) / 1000;
+            lastTime = now;
+
+            // Clear with a nice tech background
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Tech Grid
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const gridSize = 30;
+            for(let i=0; i<canvas.width; i+=gridSize) {
+                ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+            }
+            for(let i=0; i<canvas.height; i+=gridSize) {
+                ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
+            }
+            ctx.stroke();
+
+            // Horizon Line
+            ctx.strokeStyle = '#00ff66';
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.2;
+            ctx.beginPath();
+            ctx.moveTo(0, centerY + 100);
+            ctx.lineTo(canvas.width, centerY + 100);
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+
+            // Render Radars
+            radars.forEach((item, index) => {
+                const x = startX + index * spacing;
+                const y = centerY;
+
+                // Update
+                item.sys.update(dt);
+
+                // Render Label
+                ctx.fillStyle = '#444';
+                ctx.font = 'bold 12px "Courier New", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(item.label, x, y + 140);
+                
+                // Status Text
+                ctx.fillStyle = '#333';
+                ctx.font = '10px monospace';
+                ctx.fillText(`SPD:${item.sys.speed.toFixed(1)} RNG:${item.sys.range}`, x, y + 155);
+
+                // Render Radar
+                ctx.save();
+                ctx.translate(x, y);
+                // Scale up for preview visibility
+                ctx.scale(1.2, 1.2); 
+                
+                // Draw a small floor shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.ellipse(0, 20, 25, 8, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                item.sys.render(ctx);
+                ctx.restore();
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        loop(performance.now());
+    </script>
+</body>
+</html>

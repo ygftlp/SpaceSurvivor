@@ -1,0 +1,45 @@
+# Project Rules for Space Survivor
+
+## 1. Code Standards
+*   **File Headers**: All new or modified JS/TS files MUST include the following header:
+    ```javascript
+    /**
+     * Author: yangguangftlp@163.com
+     * Date: [Current Date, e.g., 2026-01-31]
+     * Description: [Brief description of functionality]
+     */
+    ```
+*   **Language**: Use English for code variables/functions. **Comments MUST be in Chinese** to ensure easy understanding for the core team.
+
+## 2. Architecture & Modularity
+*   **Single Responsibility**: Do not create "God Classes".
+*   **Directory Structure**:
+    *   `js/object/`: Entities (Bullet, Enemy, Player)
+    *   `js/ui/`: UI Components (Scoreboard, Joystick)
+    *   `js/manager/`: Game Management (Audio, GameState)
+    *   `js/utils/`: Utilities
+*   **Separation**: Logic and UI must be decoupled.
+
+## 3. Resolution & Adaptation
+*   **Design Resolution**: **720 x 1280** (Portrait, Width Fixed).
+*   **Adaptation Strategy (Mandatory)**:
+    *   **Width-First**: Scale factor = `screenWidth / 720`.
+    *   **Context Scaling**: Use `ctx.scale(ratio, ratio)` globally. All rendering commands must use **Design Coordinates** (0-720).
+    *   **Logic Height**: `logicHeight = screenHeight / ratio`. The visible height is dynamic (>=1280), handle vertical spacing relatively.
+    *   **Input Mapping**: Touch events MUST be converted to logic coordinates: `logicX = clientX / scale`.
+    *   **Forbidden**: Do NOT use physical pixels for game logic (speed, size, position).
+
+## 4. Quality Assurance (Critical)
+*   **Double Check Rule**: After every code modification, you **MUST** meticulously review the change to ensure:
+    *   No syntax errors (check closing braces `}`, parentheses `)`, and semicolons).
+    *   No broken references (ensure variables exist in current scope).
+    *   No truncated code blocks at the end of files.
+    *   **Variable Scope Check**: explicit verification of variable names (e.g., `dt` vs `deltaTime`) is MANDATORY.
+*   **Runtime Stability**: Verify that new changes do not break existing functionality (e.g., ensure `update()` loop is intact).
+
+## 5. Prevention of Tool Misuse (Lessons Learned)
+*   **Exact Matching Required**: When using `replace_file_content`, the `TargetContent` MUST match the existing code **exactly**, character-for-character, including whitespace.
+    *   **Prohibited**: Do NOT use comments like `// ...` or `// (rest of code)` as placeholders in `TargetContent`. If you do, the tool will fail to find the match, and the edit will be silently skipped or misapplied.
+*   **Diff Verification**: After ANY tool execution (especially code edits), you **MUST** read the returned **Diff Output**.
+    *   If a chunk you intended to verify shows as "unchanged" or is missing from the diff, it means the edit **FAILED**. You must correct the `TargetContent` and retry immediately.
+    *   Never assume an edit worked just because the tool didn't crash.

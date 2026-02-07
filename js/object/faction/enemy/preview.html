@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1000 Enemy Variants</title>
+    <style>
+        body {
+            background-color: #111;
+            color: #eee;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #ff5555; }
+        .controls { margin-bottom: 20px; }
+        input { padding: 5px; background: #333; color: white; border: 1px solid #555; }
+        button { padding: 5px 15px; cursor: pointer; background: #444; color: white; border: 1px solid #666; }
+        button:hover { background: #666; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            width: 90%;
+            max-width: 1200px;
+        }
+        .card {
+            background: #222;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .card:hover { transform: scale(1.05); border-color: #888; }
+        .card canvas { margin-bottom: 5px; }
+        .stats { font-size: 0.8em; color: #aaa; text-align: left; margin-top: 5px; }
+        .stat-row { display: flex; justify-content: space-between; }
+        .name { color: #fff; font-weight: bold; margin-bottom: 5px; font-size: 0.9em; height: 2.4em; overflow: hidden; }
+        .id-tag { color: #666; font-size: 0.7em; margin-bottom: 2px; }
+    </style>
+</head>
+<body>
+    <h1>Enemy Database: 1000 Variants</h1>
+    <div class="controls">
+        <label>Start ID: <input type="number" id="startId" value="0" min="0" max="999"></label>
+        <button onclick="renderGrid()">Generate Batch</button>
+        <button onclick="prevBatch()">Previous 20</button>
+        <button onclick="nextBatch()">Next 20</button>
+    </div>
+
+    <div class="grid" id="enemyGrid"></div>
+
+    <script type="module">
+        import EnemyFactory from './EnemyFactory.js';
+        import Enemy from './enemy.js';
+
+        const grid = document.getElementById('enemyGrid');
+        const startIdInput = document.getElementById('startId');
+
+        window.renderGrid = () => {
+            const startId = parseInt(startIdInput.value) || 0;
+            grid.innerHTML = '';
+
+            for (let i = 0; i < 20; i++) {
+                const id = startId + i;
+                if (id > 1000) break;
+
+                // 1. Create Config
+                const config = EnemyFactory.createEnemyConfig(id);
+                
+                // 2. Create Enemy Instance (just for rendering context)
+                // We pass a mock scene
+                const enemy = new Enemy(config, 0, 0, {});
+
+                // 3. Create Card
+                const card = document.createElement('div');
+                card.className = 'card';
+                
+                // Canvas
+                const cvs = document.createElement('canvas');
+                cvs.width = 100;
+                cvs.height = 100;
+                card.appendChild(cvs);
+
+                // Render to canvas
+                const ctx = cvs.getContext('2d');
+                ctx.translate(50, 50);
+                enemy.render(ctx);
+
+                // Info
+                const info = document.createElement('div');
+                info.innerHTML = `
+                    <div class="id-tag">ID: #${config.id.toString().padStart(3, '0')}</div>
+                    <div class="name">${config.name}</div>
+                    <div class="stats">
+                        <div class="stat-row"><span>HP:</span> <span style="color:#f55">${config.hp}</span></div>
+                        <div class="stat-row"><span>SPD:</span> <span style="color:#5f5">${config.speed}</span></div>
+                        <div class="stat-row"><span>DMG:</span> <span style="color:#55f">${config.damage}</span></div>
+                        <div class="stat-row" style="margin-top:2px; font-size:0.9em"><span>Mv:</span> <span style="color:#dd8">${config.movementConfig.pattern}</span></div>
+                        <div class="stat-row" style="font-size:0.9em"><span>Wp:</span> <span style="color:#8dd">${config.weaponConfig.pattern}</span></div>
+                        <div class="stat-row" style="font-size:0.8em; color:#aaa"><span>Type:</span> <span style="color:${config.weaponConfig.color}">${config.weaponConfig.elementName} ${config.weaponConfig.shape}</span></div>
+                        <div class="stat-row" style="font-size:0.8em; color:#aaa"><span>Mod:</span> <span>${config.weaponConfig.behavior}</span></div>
+                    </div>
+                `;
+                card.appendChild(info);
+
+                grid.appendChild(card);
+            }
+        };
+
+        window.nextBatch = () => {
+            startIdInput.value = parseInt(startIdInput.value) + 20;
+            renderGrid();
+        };
+
+        window.prevBatch = () => {
+            startIdInput.value = Math.max(0, parseInt(startIdInput.value) - 20);
+            renderGrid();
+        };
+
+        // Initial render
+        renderGrid();
+
+        // Animate
+        function animate() {
+            const cards = document.querySelectorAll('.card canvas');
+            const time = performance.now() / 1000;
+            
+            // We need to re-render all visible canvases to animate engines
+            // This is heavy but fine for a preview
+            // Actually, let's just do a simple "pulse" in CSS or skip re-rendering logic for now to save complexity
+            // The render() method in EnemyDesign uses 'time', so we'd need to clear and redraw.
+            
+            // Re-drawing loop
+            const startId = parseInt(startIdInput.value) || 0;
+            const contexts = [];
+            document.querySelectorAll('.card canvas').forEach(c => contexts.push(c.getContext('2d')));
+            
+            contexts.forEach((ctx, index) => {
+                const id = startId + index;
+                const config = EnemyFactory.createEnemyConfig(id);
+                const enemy = new Enemy(config, 0, 0, {});
+                enemy.time = time;
+                
+                ctx.clearRect(-50, -50, 100, 100);
+                enemy.render(ctx);
+            });
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+    </script>
+</body>
+</html>
