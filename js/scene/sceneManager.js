@@ -10,6 +10,7 @@ import ResultScene from './resultScene.js';
 import SplashScene from './splashScene.js';
 import ProfileScene from './profileScene.js';
 import StoryScene from './storyScene.js';
+import HangarScene from './hangarScene.js';
 
 export default class SceneManager {
     constructor(game) {
@@ -23,7 +24,8 @@ export default class SceneManager {
             'HOME': HomeScene,
             'BATTLE': BattleScene,
             'RESULT': ResultScene,
-            'PROFILE': ProfileScene
+            'PROFILE': ProfileScene,
+            'HANGAR': HangarScene
         };
     }
 

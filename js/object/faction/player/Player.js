@@ -37,26 +37,10 @@ export default class Player {
         this.effectiveStats = {}; // Actual stats used for shooting
         this.refreshStats();
 
-        // ========== 能量系统 (Energy System) ==========
-        this.maxEnergy = 100;
-        this.energy = this.maxEnergy; // 当前能量 (0-100)
-        this.energyRegenRate = 12; // 每秒恢复12点能量（加快恢复）
-        this.overheat = false; // 过热状态
-        this.overheatTimer = 0; // 过热持续时间
-        this.overheatDuration = 2.5; // 过热持续2.5秒（略微降低惩罚）
-        
-        // 武器能量消耗
-        this.energyCostPerShot = 2; // 每发子弹消耗2点能量（降低消耗）
-        this.secondarySkillCost = 30; // 副武器技能消耗30点
-        
-        // 副武器系统
-        this.secondarySkill = {
-            id: 'missile_salvo',
-            name: '导弹齐射',
-            cooldown: 0,
-            maxCooldown: 8, // 8秒冷却
-            ready: true
-        };
+        // ========== 三维高度层系统 (3D Altitude System) - 已移除 ==========
+        // 为了简化操作，移除了手动高度控制，改为自动高度适应
+        this.altitude = 500; // 固定为中空
+
     }
 
     // 当装备变更时调用此方法刷新属性
@@ -101,35 +85,19 @@ export default class Player {
         let newBullets = [];
         const now = Date.now();
         
-        // ========== 能量系统更新 ==========
-        const dt = deltaTime / 1000; // 转换为秒
+        // ========== 高度系统更新 (已移除) ==========
+        // 保持高度固定
         
-        // 处理过热状态
-        if (this.overheat) {
-            this.overheatTimer -= dt;
-            if (this.overheatTimer <= 0) {
-                this.overheat = false;
-                this.overheatTimer = 0;
-                console.log('过热解除！能量系统恢复正常');
-            }
-            // 过热时能量恢复速度减半
-            this.energy = Math.min(this.maxEnergy, this.energy + (this.energyRegenRate * 0.5) * dt);
-        } else {
-            // 正常能量恢复
-            this.energy = Math.min(this.maxEnergy, this.energy + this.energyRegenRate * dt);
+        // 更新实际速度 (无高度惩罚)
+        const actualSpeed = this.speed;
+        
+        // ========== 更新战机状态（特技冷却等） ==========
+        if (this.fighter && this.fighter.update) {
+            this.fighter.update(deltaTime);
         }
         
-        // 副武器冷却
-        if (!this.secondarySkill.ready) {
-            this.secondarySkill.cooldown -= dt;
-            if (this.secondarySkill.cooldown <= 0) {
-                this.secondarySkill.ready = true;
-                this.secondarySkill.cooldown = 0;
-            }
-        }
-
-        // Auto Shoot - 检查能量和过热
-        if (this.isShooting && !this.overheat && this.energy >= this.energyCostPerShot) {
+        // ========== 自动射击（已简化：无能量限制） ==========
+        if (this.isShooting) {
             if (now - this.lastShootTime > this.shootInterval) {
                 const bullets = this.shoot();
                 if (bullets.length > 0) {
@@ -143,23 +111,7 @@ export default class Player {
     }
 
     shoot() {
-        // 检查能量
-        const totalCost = this.energyCostPerShot * this.effectiveStats.count;
-        if (this.energy < totalCost || this.overheat) {
-            return []; // 能量不足或过热，无法射击
-        }
-        
-        // 消耗能量
-        this.energy -= totalCost;
-        
-        // 检查是否过热（能量归零）
-        if (this.energy <= 0) {
-            this.energy = 0;
-            this.overheat = true;
-            this.overheatTimer = this.overheatDuration;
-            console.log('警告：能量耗尽！系统进入过热状态！');
-        }
-        
+        // 自动射击（已简化：无能量消耗）
         const bullets = [];
         const stats = this.effectiveStats; // Use effective stats
         const startX = this.x;
@@ -182,53 +134,7 @@ export default class Player {
         return bullets;
     }
     
-    /**
-     * 使用副武器技能（导弹齐射）
-     */
-    useSecondarySkill() {
-        if (!this.secondarySkill.ready || this.overheat) {
-            return []; // 冷却中或过热
-        }
-        
-        // 检查能量
-        if (this.energy < this.secondarySkillCost) {
-            return []; // 能量不足
-        }
-        
-        // 消耗能量和触发冷却
-        this.energy -= this.secondarySkillCost;
-        this.secondarySkill.ready = false;
-        this.secondarySkill.cooldown = this.secondarySkill.maxCooldown;
-        
-        // 生成导弹齐射（8发追踪导弹）
-        const missiles = [];
-        const startX = this.x;
-        const startY = this.y - this.height / 2;
-        
-        for (let i = 0; i < 8; i++) {
-            const angle = -90 + (i - 3.5) * 10; // 扇形分布
-            const missile = new Bullet(startX, startY, angle, 400, 50, false);
-            missile.isHoming = true; // 追踪标记
-            missile.homingDelay = i * 0.1; // 延迟启动追踪
-            missiles.push(missile);
-        }
-        
-        console.log('导弹齐射！发射8枚追踪导弹');
-        return missiles;
-    }
-    
-    /**
-     * 瞬间充能（拾取电池）
-     */
-    overchargeEnergy(amount) {
-        this.energy = Math.min(this.maxEnergy, this.energy + amount);
-        // 拾取电池可以解除过热
-        if (this.overheat && amount >= 30) {
-            this.overheat = false;
-            this.overheatTimer = 0;
-            console.log('电池注入！过热解除！');
-        }
-    }
+    // 能量系统已删除 - 自动射击无限制
 
 
     render(ctx) {
@@ -299,92 +205,10 @@ export default class Player {
     }
 
     /**
-     * 渲染能量条和副武器UI（在BattleScene中调用）
+     * 渲染UI (已移除高度条)
      */
     renderUI(ctx, screenWidth, screenHeight) {
-        // ========== 顶部能量条 ==========
-        const barWidth = 200;
-        const barHeight = 16;
-        const x = screenWidth / 2 - barWidth / 2;
-        const y = 80; // 顶部位置
-        
-        // 能量条背景
-        ctx.fillStyle = '#1a202c';
-        ctx.fillRect(x, y, barWidth, barHeight);
-        ctx.strokeStyle = this.overheat ? '#ff4444' : '#4a5568';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, barWidth, barHeight);
-        
-        // 能量填充
-        const energyPercent = this.energy / this.maxEnergy;
-        let energyColor;
-        if (this.overheat) {
-            energyColor = '#ff4444'; // 过热红色
-        } else if (energyPercent > 0.6) {
-            energyColor = '#00ccff'; // 充足青色
-        } else if (energyPercent > 0.3) {
-            energyColor = '#ffcc00'; // 中等黄色
-        } else {
-            energyColor = '#ff4444'; // 低能量红色
-        }
-        
-        ctx.fillStyle = energyColor;
-        ctx.fillRect(x + 2, y + 2, (barWidth - 4) * energyPercent, barHeight - 4);
-        
-        // 能量文字
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        if (this.overheat) {
-            ctx.fillStyle = '#ff4444';
-            ctx.fillText(`⚠ 系统过热 ${Math.ceil(this.overheatTimer)}s`, screenWidth / 2, y + 12);
-        } else {
-            ctx.fillText(`能量 ${Math.floor(this.energy)}/${this.maxEnergy}`, screenWidth / 2, y + 12);
-        }
-        
-        // 副武器技能指示器
-        const skillX = screenWidth / 2 + barWidth / 2 + 20;
-        const skillY = y + 8;
-        const skillRadius = 20;
-        
-        // 技能背景圈
-        ctx.beginPath();
-        ctx.arc(skillX, skillY, skillRadius, 0, Math.PI * 2);
-        ctx.fillStyle = '#1a202c';
-        ctx.fill();
-        ctx.strokeStyle = this.secondarySkill.ready ? '#00ccff' : '#4a5568';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        
-        // 技能冷却指示
-        if (!this.secondarySkill.ready) {
-            const cooldownPercent = 1 - (this.secondarySkill.cooldown / this.secondarySkill.maxCooldown);
-            ctx.beginPath();
-            ctx.arc(skillX, skillY, skillRadius - 3, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * cooldownPercent));
-            ctx.strokeStyle = '#ffcc00';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-        }
-        
-        // 技能图标（简单导弹形状）
-        ctx.fillStyle = this.secondarySkill.ready && this.energy >= this.secondarySkillCost ? '#00ccff' : '#4a5568';
-        ctx.beginPath();
-        ctx.moveTo(skillX, skillY - 10);
-        ctx.lineTo(skillX + 6, skillY + 8);
-        ctx.lineTo(skillX, skillY + 5);
-        ctx.lineTo(skillX - 6, skillY + 8);
-        ctx.closePath();
-        ctx.fill();
-        
-        // 能量消耗提示
-        if (this.secondarySkill.ready && this.energy < this.secondarySkillCost) {
-            ctx.fillStyle = '#ff4444';
-            ctx.font = '10px Arial';
-            ctx.fillText('能量不足', skillX, skillY + 28);
-        }
-        
-        // ========== 右下角：战机特技按钮 ==========
-        this.renderAbilityButton(ctx, screenWidth, screenHeight);
+        // 高度条已移除
     }
 
     /**
@@ -392,9 +216,9 @@ export default class Player {
      * 位置：右下角，与操作杆（左下）不重叠
      */
     renderAbilityButton(ctx, screenWidth, screenHeight) {
-        const btnX = screenWidth - 70;
-        const btnY = screenHeight - 240; // 在副武器按钮上方，避免重叠
-        const btnRadius = 30;
+        const btnX = 80;  // 左下角
+        const btnY = screenHeight - 180;  // 在高度按钮上方
+        const btnRadius = 25;  // 50x50 大小
         
         // 获取战机特技状态
         let ability = null;
@@ -484,68 +308,24 @@ export default class Player {
             ctx.fillText(icon, btnX, btnY);
         }
         
-        // 底部技能名称
+        // 底部技能名称 - 增大字体并添加阴影
+        ctx.save();
         ctx.fillStyle = isReady ? '#fff' : '#888';
-        ctx.font = '11px Arial';
-        ctx.fillText(abilityName, btnX, btnY + btnRadius + 12);
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText(abilityName, btnX, btnY + btnRadius + 14);
+        ctx.restore();
         
         ctx.restore();
     }
 
-    renderShapeFallback(ctx) {
-        if (this.fighterId === 'J-20') {
-            ctx.fillStyle = '#dfe6e9';
-            this.drawJetShape(ctx);
-            ctx.fillStyle = '#74b9ff';
-            ctx.beginPath();
-            ctx.moveTo(0, -30); ctx.lineTo(30, 20); ctx.lineTo(10, 30); ctx.lineTo(0, 20); ctx.lineTo(-10, 30); ctx.lineTo(-30, 20);
-            ctx.fill();
-        } else if (this.fighterId === 'F-22') {
-            ctx.fillStyle = '#2d3436';
-            this.drawJetShape(ctx);
-            ctx.fillStyle = '#636e72';
-            ctx.beginPath();
-            ctx.moveTo(0, -30); ctx.lineTo(35, 10); ctx.lineTo(15, 30); ctx.lineTo(-15, 30); ctx.lineTo(-35, 10);
-            ctx.fill();
-        } else if (this.fighterId === 'Su-57') {
-            ctx.fillStyle = '#55efc4';
-            this.drawJetShape(ctx);
-            ctx.fillStyle = '#00b894';
-            ctx.beginPath();
-            ctx.moveTo(0, -35); ctx.lineTo(25, 15); ctx.lineTo(25, 35); ctx.lineTo(-25, 35); ctx.lineTo(-25, 15);
-            ctx.fill();
-        } else {
-            ctx.fillStyle = '#00ccff';
-            this.drawJetShape(ctx);
-        }
-    }
-
-    renderShapeFallback(ctx) {
-        if (this.fighterId === 'J-20') {
-            ctx.fillStyle = '#dfe6e9';
-            this.drawJetShape(ctx);
-            ctx.fillStyle = '#74b9ff';
-            ctx.beginPath();
-            ctx.moveTo(0, -30); ctx.lineTo(30, 20); ctx.lineTo(10, 30); ctx.lineTo(0, 20); ctx.lineTo(-10, 30); ctx.lineTo(-30, 20);
-            ctx.fill();
-        } else if (this.fighterId === 'F-22') {
-            ctx.fillStyle = '#2d3436';
-            this.drawJetShape(ctx);
-            ctx.fillStyle = '#636e72';
-            ctx.beginPath();
-            ctx.moveTo(0, -30); ctx.lineTo(35, 10); ctx.lineTo(15, 30); ctx.lineTo(-15, 30); ctx.lineTo(-35, 10);
-            ctx.fill();
-        } else if (this.fighterId === 'Su-57') {
-            ctx.fillStyle = '#55efc4';
-            this.drawJetShape(ctx);
-            ctx.fillStyle = '#00b894';
-            ctx.beginPath();
-            ctx.moveTo(0, -35); ctx.lineTo(25, 15); ctx.lineTo(25, 35); ctx.lineTo(-25, 35); ctx.lineTo(-25, 15);
-            ctx.fill();
-        } else {
-            ctx.fillStyle = '#00ccff';
-            this.drawJetShape(ctx);
-        }
+    /**
+     * 渲染高度条（右侧）- 已移除
+     */
+    renderAltitudeBar(ctx, screenWidth, screenHeight) {
+        // 已移除
     }
 
     drawJetShape(ctx) {

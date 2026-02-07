@@ -34,6 +34,7 @@
     *   No syntax errors (check closing braces `}`, parentheses `)`, and semicolons).
     *   No broken references (ensure variables exist in current scope).
     *   No truncated code blocks at the end of files.
+    *   **Variable Scope Check**: explicit verification of variable names (e.g., `dt` vs `deltaTime`) is MANDATORY.
 *   **Runtime Stability**: Verify that new changes do not break existing functionality (e.g., ensure `update()` loop is intact).
 
 ## 5. Prevention of Tool Misuse (Lessons Learned)

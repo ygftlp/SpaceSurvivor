@@ -33,14 +33,15 @@ export default class SkillCard extends Component {
     render(ctx) {
         if (!this.visible) return;
 
-        // Card Background
-        RenderUtils.fillRoundRect(ctx, this.x, this.y, this.width, this.height, 10, this.bgColor);
+        // Card Background (使用普通矩形)
+        ctx.fillStyle = this.bgColor;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
 
         // Border (Highlight if needed)
         ctx.save();
         ctx.strokeStyle = this.isSelected ? '#ffff00' : this.borderColor;
         ctx.lineWidth = 2;
-        RenderUtils.strokeRoundRect(ctx, this.x, this.y, this.width, this.height, 10);
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
 
         // Icon Placeholder (Left)
         const iconSize = 40;

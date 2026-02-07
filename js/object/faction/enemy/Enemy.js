@@ -40,6 +40,11 @@ export default class Enemy {
         this.rotation = 0; // Physics rotation
         this.angle = Math.PI / 2; // For movement math (radians, pointing down)
 
+        // 高度层系统（与Player对应）
+        this.altitude = config.altitude || 500; // 默认中空层
+        this.altitudeRange = config.altitudeRange || 100; // 高度变化范围
+        this.targetAltitude = this.altitude;
+
         // Specific Props
         this.fireRate = config.fireRate; // For weapon
         this.amplitude = config.amplitude; // For sine
@@ -72,10 +77,16 @@ export default class Enemy {
             this.weaponStrategy.update(this, dt);
         }
 
-        // 3. Boundary Check
+        // 3. 高度层移动（部分敌人会上下浮动）
+        if (this.config.movement === 'SINE' || this.config.movement === 'HOVER') {
+            // 这些敌人在高度层上下浮动
+            this.altitude += Math.sin(this.time * 2) * 0.5;
+            this.altitude = Math.max(100, Math.min(900, this.altitude));
+        }
+
+        // 4. Boundary Check - 修复：所有边界都应该让敌人失效
         if (this.y > 1500 || this.y < -200 || this.x < -100 || this.x > 1000) {
-            // Allow some buffer before killing
-            if (this.y > 1500) this.active = false;
+            this.active = false; // 无论从哪个边界离开屏幕，都标记为失效
         }
     }
 
@@ -111,6 +122,25 @@ export default class Enemy {
         ctx.translate(this.x, this.y);
         // Enemy faces DOWN by default (PI/2), so we might need to adjust based on movement angle
         ctx.rotate(this.rotation);
+
+        // 根据高度层添加视觉效果 - 简化版：只缩放大小，保持完全不透明
+        const altitudeFactor = this.altitude / 1000; // 0.1 - 0.9
+        const scaleByAltitude = 1 - (altitudeFactor * 0.15); // 高空缩小至85%
+        
+        ctx.scale(scaleByAltitude, scaleByAltitude);
+        // 始终保持完全不透明，确保可见
+        ctx.globalAlpha = 1.0;
+
+        // 高空添加阴影效果
+        if (this.altitude > 600) {
+            ctx.shadowColor = 'rgba(100, 100, 255, 0.3)';
+            ctx.shadowBlur = 15;
+        } else if (this.altitude < 300) {
+            // 低空添加地面阴影
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetY = 10;
+        }
 
         // 1. Procedural Render (Priority)
         if (this.config.genome) {
@@ -177,6 +207,10 @@ export default class Enemy {
         const w = this.width / 2;
         const h = this.height / 2;
 
+        // 添加发光效果让敌人更显眼
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(0, h); // Nose (Pointing Down)
@@ -186,6 +220,8 @@ export default class Enemy {
         ctx.closePath();
         ctx.fill();
 
+        ctx.shadowBlur = 0;
+
         // Details
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
@@ -194,10 +230,10 @@ export default class Enemy {
         ctx.lineTo(-5, -h + 5);
         ctx.fill();
 
-        // Cockpit
-        ctx.fillStyle = '#ccffcc';
+        // Cockpit - 更亮更显眼
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
         ctx.fill();
     }
 

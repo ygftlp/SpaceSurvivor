@@ -25,6 +25,14 @@
             border-radius: 8px;
             margin-top: 20px;
         }
+        .info-panel {
+            max-width: 800px;
+            text-align: center;
+            margin: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
         .controls {
             margin-top: 20px;
             text-align: center;
@@ -42,13 +50,26 @@
             letter-spacing: 2px;
             text-shadow: 0 0 10px rgba(255,255,255,0.3);
         }
+        h2 { font-weight: 200; color: #00f0ff; }
+        p { line-height: 1.6; }
     </style>
 </head>
 <body>
-    <h1>FIGHTER HANGAR PREVIEW</h1>
+    <h1>SPACE SURVIVOR: HANGAR</h1>
+    
+    <div class="info-panel">
+        <h2>硬核科幻 Roguelite 空战</h2>
+        <p>
+            欢迎来到战机预览机库。本游戏结合了<b>Roguelite 随机技能构建</b>与<b>高保真战机驾驶</b>体验。<br>
+            下方展示了当前版本可用的四款核心战机，每款战机都搭载了独特的武器、引擎和涂装系统。<br>
+            <small>注：真实游戏中的战机将具备动态光影、粒子特效及物理惯性。</small>
+        </p>
+    </div>
+
     <canvas id="previewCanvas" width="500" height="2000"></canvas>
+    
     <div class="controls">
-        <p>Customized Squad: F-16 Viper | J-20 Mighty Dragon | F-22 Raptor | Su-57 Felon</p>
+        <p>Current Squad: F-16 Viper | J-20 Mighty Dragon | F-22 Raptor | Su-57 Felon</p>
     </div>
 
     <script type="module">

@@ -2,11 +2,11 @@
 // Defines base templates for procedural generation to achieve "200+ types"
 
 export const EnemyTiers = {
-    TIER_1: { hp: 20, score: 10, speed: 100 }, // Drones
-    TIER_2: { hp: 60, score: 30, speed: 120 }, // Fighters
-    TIER_3: { hp: 150, score: 80, speed: 80 }, // Elites
-    TIER_4: { hp: 500, score: 300, speed: 50 }, // Mini-Boss
-    TIER_5: { hp: 2000, score: 1000, speed: 30 } // Battleships
+    TIER_1: { hp: 15, score: 12, speed: 100 }, // Drones (hp 20→15, score +20%)
+    TIER_2: { hp: 60, score: 36, speed: 120 }, // Fighters (score +20%)
+    TIER_3: { hp: 150, score: 96, speed: 80 }, // Elites (score +20%)
+    TIER_4: { hp: 500, score: 360, speed: 50 }, // Mini-Boss (score +20%)
+    TIER_5: { hp: 2000, score: 1200, speed: 30 } // Battleships (score +20%)
 };
 
 export const ChassisTypes = ['SCOUT', 'FIGHTER', 'TANK', 'INTERCEPTOR', 'BOMBER'];
@@ -36,6 +36,30 @@ export default class EnemyDatabase {
         // (Simplified logic for now)
         const weapon = difficulty > 3 ? 'SPREAD_SHOT' : 'PEA_SHOOTER';
 
+        // 根据底盘类型设置高度倾向
+        let altitude = 500; // 默认中空层
+        switch (chassis) {
+            case 'TANK':
+                // 地面单位：低空 100-200
+                altitude = 100 + Math.random() * 100;
+                break;
+            case 'SCOUT':
+            case 'FIGHTER':
+                // 飞行单位：中空 400-600
+                altitude = 400 + Math.random() * 200;
+                break;
+            case 'INTERCEPTOR':
+                // 狙击单位：高空 800-900
+                altitude = 800 + Math.random() * 100;
+                break;
+            case 'BOMBER':
+                // 轰炸机：从高空开始，之后俯冲
+                altitude = 800 + Math.random() * 100;
+                break;
+            default:
+                altitude = 400 + Math.random() * 200;
+        }
+
         return {
             chassis: chassis,
             color: color,
@@ -43,7 +67,8 @@ export default class EnemyDatabase {
             hp: tier.hp * (0.8 + Math.random() * 0.4), // 20% variance
             speed: tier.speed * (0.9 + Math.random() * 0.2),
             score: tier.score,
-            damage: 10 * difficulty
+            damage: 10 * difficulty,
+            altitude: altitude
         };
     }
 }

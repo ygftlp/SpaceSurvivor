@@ -1,4 +1,4 @@
-import Enemy from '../Enemy.js'; // Import relative to boss/ directory
+import Enemy from '../Enemy.js';
 
 /**
  * 高级BOSS基类 - 模块化组件系统
@@ -12,7 +12,7 @@ export default class BaseBoss extends Enemy {
         this.name = config.name || "Unknown Boss";
 
         // ========== 核心属性 ==========
-        this.maxHp = config.hp || 3500; // 适合3分钟BOSS战
+        this.maxHp = config.hp || 2500; // BOSS血量 3500→2500（1.5分钟可击败）
         this.hp = this.maxHp;
         this.width = config.width || 240;
         this.height = config.height || 200;
@@ -58,9 +58,9 @@ export default class BaseBoss extends Enemy {
     initModules() {
         // 默认配置示例
         this.modules.shield = {
-            maxHp: 1200,
-            hp: 1200,
-            regenRate: 50, // 每秒恢复50
+            maxHp: 800, // 护盾血量 1200→800（先破盾再输出，节奏清晰）
+            hp: 800,
+            regenRate: 40, // 每秒恢复40
             regenDelay: 5, // 5秒未受击后开始恢复
             lastDamageTime: 0,
             active: true,
@@ -69,29 +69,29 @@ export default class BaseBoss extends Enemy {
         
         // 主炮（2座）
         this.modules.mainTurrets = [
-            { x: -80, y: -20, hp: 1500, maxHp: 1500, active: true, lastFire: 0, fireInterval: 2, angle: 0 },
-            { x: 80, y: -20, hp: 1500, maxHp: 1500, active: true, lastFire: 0, fireInterval: 2, angle: 0 }
+            { x: -80, y: -20, hp: 1200, maxHp: 1200, active: true, lastFire: 0, fireInterval: 2, angle: 0 }, // 1500→1200 (-20%)
+            { x: 80, y: -20, hp: 1200, maxHp: 1200, active: true, lastFire: 0, fireInterval: 2, angle: 0 }  // 1500→1200 (-20%)
         ];
         
         // 副炮/近防炮（4座）
         this.modules.secondaryGuns = [
-            { x: -60, y: 40, hp: 800, maxHp: 800, active: true, lastFire: 0, fireInterval: 0.3 },
-            { x: -20, y: 60, hp: 800, maxHp: 800, active: true, lastFire: 0, fireInterval: 0.3 },
-            { x: 20, y: 60, hp: 800, maxHp: 800, active: true, lastFire: 0, fireInterval: 0.3 },
-            { x: 60, y: 40, hp: 800, maxHp: 800, active: true, lastFire: 0, fireInterval: 0.3 }
+            { x: -60, y: 40, hp: 640, maxHp: 640, active: true, lastFire: 0, fireInterval: 0.3 }, // 800→640 (-20%)
+            { x: -20, y: 60, hp: 640, maxHp: 640, active: true, lastFire: 0, fireInterval: 0.3 },
+            { x: 20, y: 60, hp: 640, maxHp: 640, active: true, lastFire: 0, fireInterval: 0.3 },
+            { x: 60, y: 40, hp: 640, maxHp: 640, active: true, lastFire: 0, fireInterval: 0.3 }
         ];
         
         // 机库（2座）
         this.modules.hangars = [
-            { x: -50, y: 20, hp: 2000, maxHp: 2000, active: true, lastSpawn: 0, spawnInterval: 8, spawnType: 'DRONE_SCOUT' },
-            { x: 50, y: 20, hp: 2000, maxHp: 2000, active: true, lastSpawn: 0, spawnInterval: 10, spawnType: 'DRONE_KAMIKAZE' }
+            { x: -50, y: 20, hp: 1600, maxHp: 1600, active: true, lastSpawn: 0, spawnInterval: 8, spawnType: 'DRONE_SCOUT' }, // 2000→1600 (-20%)
+            { x: 50, y: 20, hp: 1600, maxHp: 1600, active: true, lastSpawn: 0, spawnInterval: 10, spawnType: 'DRONE_KAMIKAZE' } // 2000→1600 (-20%)
         ];
         
         // 核心（初始被保护）
         this.modules.core = {
             exposed: false,
-            hp: 5000,
-            maxHp: 5000,
+            hp: 4000, // 5000→4000 (-20%)
+            maxHp: 4000,
             damageMultiplier: 3 // 核心暴露时受到3倍伤害
         };
     }

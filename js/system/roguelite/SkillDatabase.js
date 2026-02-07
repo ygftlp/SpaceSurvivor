@@ -89,7 +89,7 @@ export const Skills = {
         tier: 1,
         description: '伤害+20%',
         maxLevel: 5,
-        baseValue: 0.15,
+        baseValue: 0.20,
         scaling: 'additive',
         icon: 'damage_up',
         weight: 100,

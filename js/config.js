@@ -75,9 +75,9 @@ export const GameConfig = {
     // spread: 散射角度
     Weapons: {
         'MainGun': [
-            { level: 1, damage: 10, interval: 200, speed: STANDARDS.Speed.MEDIUM, count: 1, spread: 0 },
-            { level: 2, damage: 12, interval: 190, speed: STANDARDS.Speed.MEDIUM + 100, count: 2, spread: 10 }, // 双发
-            { level: 3, damage: 15, interval: 180, speed: STANDARDS.Speed.FAST, count: 3, spread: 15 }, // 三发
+            { level: 1, damage: 12, interval: 350, speed: STANDARDS.Speed.MEDIUM, count: 1, spread: 0 }, // 伤害10→12, 间隔200→350ms (手感优化)
+            { level: 2, damage: 15, interval: 330, speed: STANDARDS.Speed.MEDIUM + 100, count: 2, spread: 10 }, // 双发
+            { level: 3, damage: 18, interval: 310, speed: STANDARDS.Speed.FAST, count: 3, spread: 15 }, // 三发
             // ... 更多等级后续添加
         ]
     },
@@ -88,9 +88,10 @@ export const GameConfig = {
     // score: 击杀得分
     // dropRate: 掉落率 (0-1)
     Enemies: {
-        'Drone_Small': { hp: 20, damage: 10, speed: 3, score: 10, dropRate: 0.1 },
-        'Drone_Kamikaze': { hp: 10, damage: 20, speed: 6, score: 15, dropRate: 0.05 },
-        'Elite_Fighter': { hp: 100, damage: 15, speed: 2, score: 100, dropRate: 0.5 }
+        'Drone_Small': { hp: 24, damage: 10, speed: 250, score: 12, dropRate: 0.1, movement: 'SINE', amplitude: 80, frequency: 1.5 },      // 速度3→250，添加SINE波浪移动
+        'Drone_Kamikaze': { hp: 18, damage: 18, speed: 400, score: 18, dropRate: 0.05, movement: 'LINEAR' }, // 速度6→400，直线自杀式攻击
+        'Elite_Fighter': { hp: 120, damage: 15, speed: 180, score: 120, dropRate: 0.5, movement: 'PROCEDURAL', movementConfig: { pattern: 'ZIGZAG', speedX: 80, radius: 120 } },   // 速度2→180，Z字形移动
+        'Drone_Scout': { hp: 35, damage: 10, speed: 320, score: 24, dropRate: 0.15, movement: 'PROCEDURAL', movementConfig: { pattern: 'SINE', speedX: 60, radius: 60 } }      // 速度4→320，小幅度SINE
     },
 
     // 战机配置 (Fighters)

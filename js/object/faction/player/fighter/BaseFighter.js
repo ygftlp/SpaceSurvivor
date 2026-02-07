@@ -7,8 +7,8 @@ export default class BaseFighter {
         this.name = 'Unknown';
         this.desc = 'Unknown Fighter';
         this.hp = 100;
-        this.speed = 10;
-        this.damage = 10; // Base Firepower
+        this.speed = 12; // 移动速度 10→12 (手感优化)
+        this.damage = 12; // 基础伤害 10→12 (开局不刮痧)
         this.width = 60;
         this.height = 60;
         this.time = 0; // For animation

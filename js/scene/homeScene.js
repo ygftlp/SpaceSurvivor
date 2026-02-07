@@ -10,6 +10,7 @@ import { dataManager } from '../manager/dataManager.js';
 import Player from '../object/faction/player/Player.js';
 import EquipmentPopup from '../ui/equipmentPopup.js';
 import RenderUtils from '../utils/renderUtils.js';
+import Button from '../object/ui/Button.js';
 
 export default class HomeScene extends BaseScene {
     constructor(sceneManager) {
@@ -20,6 +21,7 @@ export default class HomeScene extends BaseScene {
 
         // UI Components
         this.btnStart = { x: 0, y: 0, w: 220, h: 80 };
+        this.uiComponents = [];
 
         // Profile Button (Aligned with Menu Capsule)
         const safeTop = GameConfig.SafeArea.top || 20;
@@ -39,6 +41,15 @@ export default class HomeScene extends BaseScene {
 
         // Player Model
         this.demoPlayer = new Player(this.width / 2, this.height / 2);
+
+        // 机库按钮
+        const w = this.width;
+        const h = this.height;
+        this.btnHangar = new Button(w / 2, h / 2 + 80, 160, 50, '机库');
+        this.btnHangar.setStyle('#2c3e50', '#fff', 20, 10).setCallback(() => {
+            this.sceneManager.switchScene('HANGAR');
+        });
+        this.uiComponents.push(this.btnHangar);
     }
 
     enter() {

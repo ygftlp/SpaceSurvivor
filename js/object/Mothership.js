@@ -17,14 +17,14 @@ export default class Mothership {
         this.y = scene.game.logicHeight - 100;
 
         // 状态
-        this.maxHp = 500;
+        this.maxHp = 800; // 母舰血量 500→800（给玩家更多容错）
         this.hp = this.maxHp;
         this.isAlive = true;
 
         // 跃迁充能系统
         this.jumpCharge = 0;
         this.maxJumpCharge = 100; // 100% = 可以跃迁
-        this.chargeRate = 0.5; // 每秒充能0.5%
+        this.chargeRate = 100 / 180; // 每秒充能0.556%，正好180秒完成（配合剧本）
         this.isJumpReady = false;
 
         // 视觉效果
@@ -35,6 +35,14 @@ export default class Mothership {
         // 警报状态
         this.isInDanger = false;
         this.dangerTimer = 0;
+        
+        // 武器系统 - 增强版（更频繁的开火，更大的射程）
+        this.weapons = {
+            main: { cooldown: 0, maxCooldown: 0.8, damage: 50, range: 2000 },  // 0.8秒冷却，50伤害，2000射程覆盖全屏
+            side: { cooldown: 0, maxCooldown: 0.3, damage: 25, range: 2000 }   // 0.3秒冷却，25伤害，2000射程覆盖全屏
+        };
+        this.fireTimer = 0;
+        this.lastFireTime = 0; // 用于调试
     }
 
     update(dt) {
@@ -46,6 +54,8 @@ export default class Mothership {
             if (this.jumpCharge >= this.maxJumpCharge) {
                 this.jumpCharge = this.maxJumpCharge;
                 this.isJumpReady = true;
+                // 跃迁充能完成，触发胜利条件
+                this.onJumpChargeComplete();
             }
         }
 
@@ -61,6 +71,255 @@ export default class Mothership {
 
         // 引擎光效
         this.engineGlow = 0.7 + Math.sin(this.shieldPulse) * 0.3;
+        
+        // 武器系统更新
+        this.updateWeapons(dt);
+    }
+    
+    updateWeapons(dt) {
+        // 更新武器冷却
+        this.weapons.main.cooldown = Math.max(0, this.weapons.main.cooldown - dt);
+        this.weapons.side.cooldown = Math.max(0, this.weapons.side.cooldown - dt);
+        
+        // 寻找目标并开火
+        if (!this.scene || !this.scene.enemies) {
+            console.log('MOTHERSHIP: No scene or enemies');
+            return;
+        }
+        
+        // 统计活跃敌人数量
+        const activeEnemies = this.scene.enemies.filter(e => e.active).length;
+        console.log(`MOTHERSHIP: ${activeEnemies} active enemies, mainCD: ${this.weapons.main.cooldown.toFixed(2)}`);
+        
+        // 主炮：攻击最近的敌人
+        if (this.weapons.main.cooldown <= 0) {
+            const target = this.findTarget(this.weapons.main.range);
+            if (target) {
+                console.log(`MOTHERSHIP MAIN FIRE! Target at (${Math.floor(target.x)}, ${Math.floor(target.y)})`);
+                this.fireMainWeapon(target);
+                this.weapons.main.cooldown = this.weapons.main.maxCooldown;
+            } else {
+                console.log('MOTHERSHIP: No target in range');
+            }
+        }
+        
+        // 侧炮：攻击范围内所有敌人
+        if (this.weapons.side.cooldown <= 0) {
+            const targets = this.findTargetsInRange(this.weapons.side.range, 2);
+            if (targets.length > 0) {
+                console.log(`MOTHERSHIP SIDE FIRE! ${targets.length} targets`);
+                targets.forEach(t => this.fireSideWeapon(t));
+                this.weapons.side.cooldown = this.weapons.side.maxCooldown;
+            }
+        }
+    }
+    
+    findTarget(range) {
+        let closest = null;
+        let closestDist = range;
+        
+        if (!this.scene || !this.scene.enemies) {
+            console.log('MOTHERSHIP: No scene or enemies array');
+            return null;
+        }
+        
+        let activeCount = 0;
+        this.scene.enemies.forEach(e => {
+            if (!e.active) return;
+            activeCount++;
+            const dx = e.x - this.x;
+            const dy = e.y - this.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = e;
+            }
+        });
+        
+        if (activeCount === 0) {
+            console.log('MOTHERSHIP: No active enemies found');
+        } else if (!closest) {
+            console.log(`MOTHERSHIP: ${activeCount} enemies but none in range ${range}`);
+        }
+        
+        return closest;
+    }
+    
+    findTargetsInRange(range, maxCount) {
+        const targets = [];
+        this.scene.enemies.forEach(e => {
+            if (!e.active || targets.length >= maxCount) return;
+            const dx = e.x - this.x;
+            const dy = e.y - this.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < range) {
+                targets.push(e);
+            }
+        });
+        return targets;
+    }
+    
+    fireMainWeapon(target) {
+        // 主炮：双联装激光
+        const angle = Math.atan2(target.y - this.y, target.x - this.x);
+        const spawnY = this.y - this.height / 2; // 从母舰顶部发射
+
+        console.log(`MOTHERSHIP FIRE MAIN -> Target at (${Math.floor(target.x)}, ${Math.floor(target.y)})`);
+
+        // 创建激光束效果 - 从母舰顶部到目标的连线
+        if (this.scene.effectManager) {
+            // 计算炮口位置（双联装主炮在顶部中央）
+            const leftMuzzleX = this.x - 4;
+            const rightMuzzleX = this.x + 4;
+
+            // 绘制激光束 - 使用更多粒子，更大尺寸，更亮的颜色
+            const beamSteps = 35;
+            for (let i = 0; i <= beamSteps; i++) {
+                const t = i / beamSteps;
+                // 左炮管激光 - 使用亮黄色/橙色
+                const lx = leftMuzzleX + (target.x - leftMuzzleX) * t;
+                const ly = spawnY + (target.y - spawnY) * t;
+                // 添加随机偏移使光束看起来更自然
+                const jitterX = (Math.random() - 0.5) * 6;
+                const jitterY = (Math.random() - 0.5) * 6;
+                // 随机选择亮黄色或橙色
+                const beamColor = Math.random() > 0.3 ? '#ffcc00' : '#ff8800';
+                this.scene.effectManager.spawnParticle(lx + jitterX, ly + jitterY, beamColor, 3);
+
+                // 右炮管激光
+                const rx = rightMuzzleX + (target.x - rightMuzzleX) * t;
+                const ry = spawnY + (target.y - spawnY) * t;
+                const rjitterX = (Math.random() - 0.5) * 6;
+                const rjitterY = (Math.random() - 0.5) * 6;
+                const rBeamColor = Math.random() > 0.3 ? '#ffcc00' : '#ff8800';
+                this.scene.effectManager.spawnParticle(rx + rjitterX, ry + rjitterY, rBeamColor, 3);
+            }
+
+            // 炮口火焰效果 - 大幅增加粒子数量和大小
+            for (let i = 0; i < 20; i++) {
+                const spreadAngle = angle + (Math.random() - 0.5) * 0.5;
+                const distance = Math.random() * 40;
+                const px = this.x + Math.cos(spreadAngle) * distance;
+                const py = spawnY + Math.sin(spreadAngle) * distance;
+                // 更亮的火焰颜色
+                const color = Math.random() > 0.5 ? '#ffaa00' : '#ff6600';
+                this.scene.effectManager.spawnParticle(px, py, color, 4);
+            }
+
+            // 击中目标时的爆炸粒子 - 更大量、更亮
+            for (let i = 0; i < 15; i++) {
+                const explodeAngle = Math.random() * Math.PI * 2;
+                const explodeDist = Math.random() * 35;
+                const ex = target.x + Math.cos(explodeAngle) * explodeDist;
+                const ey = target.y + Math.sin(explodeAngle) * explodeDist;
+                const color = Math.random() > 0.5 ? '#ffcc00' : '#ff9900';
+                this.scene.effectManager.spawnParticle(ex, ey, color, 3);
+            }
+
+            // 添加冲击波圆环效果
+            if (this.scene.effectManager.spawnShockwave) {
+                this.scene.effectManager.spawnShockwave(target.x, target.y, '#ffaa00', 40);
+            }
+
+            // 添加浮动文字显示伤害
+            this.scene.effectManager.spawnFloatingText(
+                '母舰炮火!',
+                this.x,
+                this.y - 120,
+                '#ffcc00',
+                24
+            );
+
+            // 同时在目标位置显示伤害数字
+            this.scene.effectManager.spawnFloatingText(
+                `-${this.weapons.main.damage}`,
+                target.x,
+                target.y - 20,
+                '#ff6600',
+                20
+            );
+        }
+
+        // 造成伤害
+        target.takeDamage(this.weapons.main.damage);
+
+        // 屏幕震动 - 更强的震动效果
+        if (this.scene.effectManager) {
+            this.scene.effectManager.shake(5, 0.15);
+        }
+    }
+    
+    fireSideWeapon(target) {
+        // 侧炮：小型速射
+        const angle = Math.atan2(target.y - this.y, target.x - this.x);
+        const spawnY = this.y - this.height / 2 + 20; // 从母舰顶部稍偏下的位置发射
+
+        // 根据目标位置决定使用左侧还是右侧炮
+        const isLeftSide = target.x < this.x;
+        const muzzleOffsetX = isLeftSide ? -this.width * 0.65 : this.width * 0.65;
+        const muzzleX = this.x + muzzleOffsetX;
+
+        console.log(`MOTHERSHIP FIRE SIDE (${isLeftSide ? 'LEFT' : 'RIGHT'}) -> Target at (${Math.floor(target.x)}, ${Math.floor(target.y)})`);
+
+        // 创建子弹效果
+        if (this.scene.effectManager) {
+            // 绘制激光束 - 更多粒子，更大尺寸，亮黄色/橙色
+            const beamSteps = 25;
+            for (let i = 0; i <= beamSteps; i++) {
+                const t = i / beamSteps;
+                const bx = muzzleX + (target.x - muzzleX) * t;
+                const by = spawnY + (target.y - spawnY) * t;
+                // 光束带随机抖动
+                const jitterX = (Math.random() - 0.5) * 4;
+                const jitterY = (Math.random() - 0.5) * 4;
+                // 使用亮黄色/橙色替代原来的蓝色
+                const beamColor = Math.random() > 0.4 ? '#ffcc00' : '#ff9900';
+                this.scene.effectManager.spawnParticle(bx + jitterX, by + jitterY, beamColor, 3);
+            }
+
+            // 炮口闪光 - 大幅增加粒子数量和大小
+            for (let i = 0; i < 12; i++) {
+                const spreadAngle = angle + (Math.random() - 0.5) * 0.5;
+                const distance = Math.random() * 30;
+                const px = muzzleX + Math.cos(spreadAngle) * distance;
+                const py = spawnY + Math.sin(spreadAngle) * distance;
+                // 更亮的火焰颜色
+                const color = Math.random() > 0.5 ? '#ffaa00' : '#ff7700';
+                this.scene.effectManager.spawnParticle(px, py, color, 3);
+            }
+
+            // 击中效果 - 更大量、更亮
+            for (let i = 0; i < 10; i++) {
+                const explodeAngle = Math.random() * Math.PI * 2;
+                const explodeDist = Math.random() * 25;
+                const ex = target.x + Math.cos(explodeAngle) * explodeDist;
+                const ey = target.y + Math.sin(explodeAngle) * explodeDist;
+                const color = Math.random() > 0.5 ? '#ffcc00' : '#ffaa00';
+                this.scene.effectManager.spawnParticle(ex, ey, color, 3);
+            }
+
+            // 添加小型冲击波圆环效果
+            if (this.scene.effectManager.spawnShockwave) {
+                this.scene.effectManager.spawnShockwave(target.x, target.y, '#ffcc00', 25);
+            }
+
+            // 在目标位置显示伤害数字
+            this.scene.effectManager.spawnFloatingText(
+                `-${this.weapons.side.damage}`,
+                target.x,
+                target.y - 15,
+                '#ffaa00',
+                16
+            );
+        }
+
+        // 造成伤害
+        target.takeDamage(this.weapons.side.damage);
+
+        // 屏幕震动 - 侧炮震动较小但仍可感知
+        if (this.scene.effectManager) {
+            this.scene.effectManager.shake(3, 0.1);
+        }
     }
 
     takeDamage(damage) {
@@ -102,6 +361,29 @@ export default class Mothership {
         setTimeout(() => {
             this.scene.endGame(false); // false = 失败
         }, 2000);
+    }
+
+    onJumpChargeComplete() {
+        // 跃迁充能完成 = 游戏胜利
+        console.log('MOTHERSHIP JUMP CHARGE COMPLETE - VICTORY!');
+        
+        if (this.scene.effectManager) {
+            this.scene.effectManager.spawnFloatingText(
+                '跃迁引擎启动!',
+                this.x,
+                this.y - 150,
+                '#00ffff',
+                50
+            );
+            this.scene.effectManager.shake(10, 1.0);
+        }
+        
+        // 延迟后结束游戏（给玩家时间看到胜利提示）
+        setTimeout(() => {
+            if (this.scene && this.isAlive) {
+                this.scene.endGame(true); // true = 胜利
+            }
+        }, 3000);
     }
 
     // 敌人AI调用 - 判断是否应该攻击母舰
@@ -725,5 +1007,33 @@ export default class Mothership {
         } else {
             ctx.fillText(`跃迁充能 ${Math.floor(jumpPercent * 100)}%`, this.x, jumpY + 11);
         }
+    }
+
+    renderCountdownUI(ctx, screenWidth, screenHeight) {
+        // 90秒倒计时（简化版）
+        const remainingTime = Math.max(0, 90 - this.scene.waveManager.levelTime);
+        const minutes = Math.floor(remainingTime / 60);
+        const seconds = Math.floor(remainingTime % 60);
+        const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        // 大倒计时（屏幕顶部中央）
+        ctx.save();
+        
+        // 背景框
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(screenWidth/2 - 80, 15, 160, 50);
+        
+        // 倒计时数字 - 最后20秒变红
+        ctx.fillStyle = remainingTime < 20 ? '#e74c3c' : '#fff';
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(timeStr, screenWidth/2, 50);
+        
+        // 倒计时标签
+        ctx.fillStyle = '#aaa';
+        ctx.font = '12px Arial';
+        ctx.fillText('保护母舰', screenWidth/2, 65);
+        
+        ctx.restore();
     }
 }

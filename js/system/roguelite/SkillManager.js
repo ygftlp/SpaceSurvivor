@@ -15,7 +15,7 @@ export default class SkillManager {
         this.expToNext = 100;
         
         // 经验曲线调整（更快升级）
-        this.expCurve = 1.3; // 原来是1.5
+        this.expCurve = 1.24; // 原来是1.5→1.3→1.24 (降低20%升级需求，成长更快)
 
         // 技能状态
         this.acquiredSkills = []; // 已获得的技能列表（包含等级）
@@ -105,6 +105,11 @@ export default class SkillManager {
         // 执行技能效果
         if (skill.onApply && this.player) {
             skill.onApply(this.player, currentLevel);
+        }
+        
+        // 触发升级视觉特效
+        if (this.scene && this.scene.effectManager && this.player) {
+            this.scene.effectManager.spawnLevelUpAura(this.player.x, this.player.y);
         }
         
         // 如果还有未处理的升级，继续显示

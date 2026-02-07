@@ -46,14 +46,25 @@ export default class Button extends Component {
     render(ctx) {
         if (!this.visible) return;
 
-        RenderUtils.fillRoundRect(ctx, this.x, this.y, this.width, this.height, this.radius, this.bgColor);
+        // 绘制按钮背景（支持透明）
+        if (this.bgColor && this.bgColor !== 'transparent') {
+            RenderUtils.fillRoundRect(ctx, this.x, this.y, this.width, this.height, this.radius, this.bgColor);
+        }
 
+        // 绘制按钮文字
         if (this.text) {
             ctx.save();
             ctx.fillStyle = this.fgColor;
             ctx.font = `${this.fontSize}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            
+            // 如果背景透明，添加文字阴影提升可读性
+            if (!this.bgColor || this.bgColor === 'transparent') {
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 4;
+            }
+            
             ctx.fillText(this.text, this.x + this.width / 2, this.y + this.height / 2);
             ctx.restore();
         }

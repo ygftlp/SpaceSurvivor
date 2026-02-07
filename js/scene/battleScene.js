@@ -2,8 +2,10 @@ import BaseScene from './baseScene.js';
 import { GameConfig } from '../config.js';
 import { dataManager } from '../manager/dataManager.js';
 import { audioManager } from '../manager/audioManager.js';
+import { metaProgression } from '../manager/metaProgression.js';
 import Player from '../object/faction/player/Player.js';
 import Enemy from '../object/faction/enemy/Enemy.js';
+import Bullet from '../object/bullet.js';
 import Loot from '../object/item/loot.js';
 import WaveManager from '../manager/waveManager.js';
 import Mothership from '../object/Mothership.js';
@@ -73,6 +75,11 @@ export default class BattleScene extends BaseScene {
         // Upgrade to array for multiple effects
         this.floatingTexts = [];
         this.lastGold = 0;
+
+        // 高度层控制 - 已移除
+        this.touchStartY = 0;
+        this.touchStartTime = 0;
+        this.isVerticalSwipe = false;
     }
 
     enter() {
@@ -103,6 +110,10 @@ export default class BattleScene extends BaseScene {
         this.maxExp = 100;
         this.magnetRange = 150; // Default pickup range
 
+        // 阶段性成就提示系统
+        this.stageMilestones = [30, 60]; // 30秒和60秒显示阶段性提示
+        this.achievedMilestones = [];
+
         // 1. Init Pause Button (Top-Left)
         const safeTop = GameConfig.SafeArea.top || 20;
         const safeLeft = GameConfig.SafeArea.left || 20;
@@ -132,14 +143,57 @@ export default class BattleScene extends BaseScene {
         // 4. Create Player
         this.player = new Player(GameConfig.Screen.width / 2, logicH - 150, logicH);
         this.player.refreshStats();
+        
+        // 5. 高度按钮回调 - 已移除
 
-        // 5. Start Survival Mode
+
+        // 6. Start Survival Mode
         this.waveManager.startSurvival();
+        
+        // 游戏开始提示
+        this.spawnFloatingText(
+            '保护母舰90秒！',
+            GameConfig.Screen.width / 2,
+            300,
+            '#00ccff',
+            36
+        );
+        
+        setTimeout(() => {
+            this.spawnFloatingText(
+                '敌人即将来袭！',
+                GameConfig.Screen.width / 2,
+                350,
+                '#ff3333',
+                28
+            );
+        }, 2000);
+        
+        console.log('=== GAME STARTED ===');
+        console.log('Mothership position:', this.mothership.x, this.mothership.y);
+        console.log('Player position:', this.player.x, this.player.y);
     }
 
     exit() {
         this.bullets = [];
         this.enemies = [];
+        this.loots = [];
+        this.supplyCrates = [];
+        this.obstacles = [];
+        this.floatingTexts = [];
+        
+        // 清理效果管理器
+        if (this.effectManager) {
+            this.effectManager.particles = [];
+            this.effectManager.floatingTexts = [];
+            this.effectManager.trails = [];
+            this.effectManager.comboCount = 0;
+            this.effectManager.comboTimer = 0;
+            this.effectManager.shakeX = 0;
+            this.effectManager.shakeY = 0;
+        }
+        
+        console.log('BattleScene: Exited and cleaned up');
     }
 
     update(dt) {
@@ -214,6 +268,34 @@ export default class BattleScene extends BaseScene {
 
         // Update Wave Manager
         this.waveManager.update(dt);
+
+        // 阶段性成就提示检查
+        const currentTime = this.waveManager.levelTime;
+        this.stageMilestones.forEach(milestone => {
+            if (currentTime >= milestone && !this.achievedMilestones.includes(milestone)) {
+                this.achievedMilestones.push(milestone);
+                // 显示阶段性成就
+                if (this.effectManager) {
+                    const messages = {
+                        30: '🎉 第1阶段完成！坚持住！',
+                        60: '🔥 第2阶段完成！最后冲刺！'
+                    };
+                    this.effectManager.spawnFloatingText(
+                        messages[milestone],
+                        GameConfig.Screen.width / 2,
+                        200,
+                        '#f39c12',
+                        32
+                    );
+                    // 屏幕震动效果
+                    this.effectManager.shake(5, 0.3);
+                }
+                // 自动升级技能
+                if (this.skillManager) {
+                    this.showSkillSelection();
+                }
+            }
+        });
 
         // Update Player and spawn bullets
         if (this.player) {
@@ -343,7 +425,25 @@ export default class BattleScene extends BaseScene {
         this.obstacles.push(new Obstacle(x, -100, type));
     }
 
-    endGame() {
+    endGame(victory = false) {
+        if (this.gameEnded) return;
+        this.gameEnded = true;
+        
+        if (victory) {
+            // 胜利 - 母舰成功跃迁
+            console.log('VICTORY - 母舰跃迁成功！');
+            this.effectManager.spawnFloatingText(
+                '跃迁成功！人类得救了！', 
+                GameConfig.Screen.width/2, 
+                GameConfig.Screen.height/2, 
+                '#00ff00', 
+                50
+            );
+        } else {
+            // 失败
+            console.log('DEFEAT');
+        }
+        
         // Calculate Rewards
         // 1. Time Bonus: 1 Gold per 10 Seconds (User Request)
         // Helps getting rewards for short runs (< 1 min)
@@ -361,22 +461,48 @@ export default class BattleScene extends BaseScene {
         // Shadow Challenge: Leave a wreckage for next run
         // Reward for next run = 50% of this run's earnings
         const wreckageGold = Math.floor(totalGold * 0.5);
-        if (wreckageGold > 0) {
+        if (wreckageGold > 0 && this.player) {
             dataManager.saveWreck(this.player.x, this.player.y, wreckageGold);
+        }
+
+        // 记录局外成长
+        const gameResult = {
+            victory: victory,
+            kills: this.score / 10, // 估算击杀数（假设每个敌人10分）
+            survivalTime: this.waveManager.levelTime,
+            playerHpPercent: this.player ? this.player.hp / this.player.maxHp : 0,
+            blueprintsCommon: victory ? 30 + Math.floor(this.waveManager.levelTime / 10) : 10,
+            blueprintsRare: victory ? 5 + Math.floor(this.waveManager.levelTime / 60) : 2,
+            blueprintsLegendary: victory ? 1 : 0
+        };
+        metaProgression.recordGameEnd(gameResult);
+        
+        // 检查新解锁
+        const newUnlocks = metaProgression.checkAllUnlocks();
+        if (newUnlocks.length > 0) {
+            newUnlocks.forEach(fighterId => {
+                this.effectManager.spawnFloatingText(
+                    `解锁新战机: ${fighterId}!`, 
+                    GameConfig.Screen.width/2, 
+                    GameConfig.Screen.height/2 - 100, 
+                    '#ffd700', 
+                    40
+                );
+            });
         }
 
         // Save
         dataManager.addGold(totalGold);
 
-        // Return Home (In future, show ResultScene)
-        this.sceneManager.switchScene('RESULT', {
-            score: this.score,
-            gold: totalGold,
-            timeSeconds: Math.floor(this.waveManager.levelTime)
-        });
-
-        // Ideally we pass params to HomeScene to show "Last Round Results"
-        // But removing battlefield gold drops is the main request.
+        // 延迟后显示结果界面
+        setTimeout(() => {
+            this.sceneManager.switchScene('RESULT', {
+                victory: victory,
+                score: this.score,
+                gold: totalGold,
+                timeSeconds: Math.floor(this.waveManager.levelTime)
+            });
+        }, 2000);
     }
 
     checkCollisions() {
@@ -387,7 +513,12 @@ export default class BattleScene extends BaseScene {
                 if (!e.active) return;
                 const dx = b.x - e.x;
                 const dy = b.y - e.y;
-                if (Math.sqrt(dx * dx + dy * dy) < (b.width + e.width) / 2) {
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // ========== 高度层判定 (已移除) ==========
+                // 默认全部命中
+                
+                if (distance < (b.width + e.width) / 2) {
                     b.active = false;
                     
                     // Check execution threshold
@@ -405,8 +536,8 @@ export default class BattleScene extends BaseScene {
                         const isCrit = Math.random() < 0.1;
                         this.effectManager.spawnDamageText(e.x, e.y - 30, b.damage, isCrit);
                         
-                        // Hit sparks on impact
-                        this.effectManager.spawnParticle(b.x, b.y, '#ffff00', 3);
+                        // Enhanced hit impact effect
+                        this.effectManager.spawnHitImpact(b.x, b.y, '#ff6600');
                     }
 
                     if (e.hp <= 0) {
@@ -457,7 +588,7 @@ export default class BattleScene extends BaseScene {
                     this.wreckage.takeDamage(b.damage);
                     if (!this.wreckage.active) {
                         // Show reward toast
-                        this.spawnFloatingText(`回收黑匣子! +${this.wreckage.gold}金币`, this.player.x, this.player.y - 50, '#ff9f43', 40);
+                        this.spawnFloatingText(`回收黑匣子! +${this.wreckage.gold}金币`, GameConfig.Screen.width / 2, 150, '#ff9f43', 40);
                     }
                 }
             }
@@ -482,7 +613,7 @@ export default class BattleScene extends BaseScene {
                     audioManager.play('coin'); // Or distinct sound
                     this.goldGained += crate.goldValue; // Track for end game if needed?
 
-                    this.spawnFloatingText(`+${crate.goldValue} 金币`, crate.x, crate.y - 50, '#ffcc00', 40);
+                    this.spawnFloatingText(`+${crate.goldValue} 金币`, GameConfig.Screen.width / 2, 150, '#ffcc00', 40);
                 }
             }
         }
@@ -493,8 +624,20 @@ export default class BattleScene extends BaseScene {
                 if (!e.active) return;
                 const dx = e.x - this.player.x;
                 const dy = e.y - this.player.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // ========== 高度层判定 ==========
+                const enemyAltitude = e.altitude !== undefined ? e.altitude : 500;
+                const playerAltitude = this.player.altitude;
+                const altitudeDiff = Math.abs(enemyAltitude - playerAltitude);
+                
+                // 高度差超过150米不会碰撞（即使平面距离很近）
+                if (altitudeDiff > 150) {
+                    return;
+                }
+                
                 // Simple circle collision (approx)
-                if (Math.sqrt(dx * dx + dy * dy) < (e.width + this.player.width) / 2.5) {
+                if (distance < (e.width + this.player.width) / 2.5) {
                     // Collision!
                     e.takeDamage(1000); // Enemy likely dies crashing into player
                     this.player.hp -= 20; // Player takes damage
@@ -508,6 +651,34 @@ export default class BattleScene extends BaseScene {
 
                     if (this.player.hp <= 0) {
                         this.endGame();
+                    }
+                }
+            });
+        }
+
+        // 3. Enemies vs Mothership
+        if (this.mothership && this.mothership.isAlive) {
+            this.enemies.forEach(e => {
+                if (!e.active) return;
+                const dx = e.x - this.mothership.x;
+                const dy = e.y - this.mothership.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < (e.width + this.mothership.width) / 2) {
+                    // 敌人撞击母舰！
+                    e.active = false;
+                    this.mothership.takeDamage(e.damage * 2);
+                    
+                    // 强烈视觉反馈
+                    if (this.effectManager) {
+                        this.effectManager.shake(20, 0.5);
+                        this.effectManager.spawnFloatingText(
+                            '母舰受击!', 
+                            this.mothership.x, 
+                            this.mothership.y - 100, 
+                            '#ff0000', 
+                            40
+                        );
                     }
                 }
             });
@@ -610,7 +781,7 @@ export default class BattleScene extends BaseScene {
 
         // Render Combo UI
         if (this.effectManager) {
-            this.effectManager.renderComboUI(ctx);
+            // 连击UI已移除（界面简化）
         }
 
         // ========== 能量系统UI ==========
@@ -622,48 +793,41 @@ export default class BattleScene extends BaseScene {
             this.renderSecondarySkillButton(ctx);
         }
 
-        // Render Battle UI (Top HUD)
-        ctx.fillStyle = '#fff';
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'left';
-
-        // Show Actual Gained Gold (from Crates + Wreckage)
-        ctx.fillText(`金币: ${dataManager.getGold()}`, 20, this.hudY); // Show TOTAL gold or Session Gold?
-        // Usually Rogue showing session earnings is better?
-        // But dataManager.addGold adds to global bank.
-        // Let's show Global or Session? Let's show Global for satisfaction?
-        // Or Session? Let's stick to showing simple "Gold" for now.
-        // Revert to simple text since we use Supply Drops now.
-
-        ctx.fillText(`分数: ${this.score}`, 20, this.hudY + 30);
-
-        // Survival Timer (Center Top)
-        const t = this.waveManager.levelTime || 0;
-        const m = Math.floor(t / 60).toString().padStart(2, '0');
-        const s = Math.floor(t % 60).toString().padStart(2, '0');
-        ctx.font = 'bold 30px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${m}:${s}`, GameConfig.Screen.width / 2, this.hudY + 10);
-
-        // Supply Countdown (User Request)
-        if (this.waveManager.supplyCount >= this.waveManager.maxSupplyDrops) {
-            ctx.fillStyle = '#ff4757';
-            ctx.font = 'bold 20px Arial';
-            ctx.fillText(`补给已耗尽`, GameConfig.Screen.width / 2, this.hudY + 45);
-        } else {
-            const timeToSupply = Math.max(0, this.waveManager.nextSupplyTime - this.waveManager.levelTime);
-            if (timeToSupply > 0) {
-                const sm = Math.floor(timeToSupply / 60).toString();
-                const ss = Math.floor(timeToSupply % 60).toString().padStart(2, '0');
-                ctx.fillStyle = '#ffcc00'; // Gold
-                ctx.font = '20px Arial';
-                ctx.fillText(`补给(${this.waveManager.supplyCount}/${this.waveManager.maxSupplyDrops}): ${sm}:${ss}`, GameConfig.Screen.width / 2, this.hudY + 45);
-            } else {
-                ctx.fillStyle = '#00ff00';
-                ctx.font = 'bold 20px Arial';
-                ctx.fillText(`补给已抵达!`, GameConfig.Screen.width / 2, this.hudY + 45);
-            }
+        // 母舰倒计时和状态
+        if (this.mothership && this.mothership.isAlive) {
+            this.mothership.renderCountdownUI(ctx, width, height);
         }
+
+        // Render Battle UI (Top HUD) - 简化版：只保留倒计时
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'center';
+
+        // Survival Timer (Center Top) - 核心元素1：倒计时
+        const t = this.waveManager.levelTime || 0;
+        const remainingTime = Math.max(0, 90 - t);
+        const m = Math.floor(remainingTime / 60).toString().padStart(2, '0');
+        const s = Math.floor(remainingTime % 60).toString().padStart(2, '0');
+        
+        // 最后20秒变红色警示
+        if (remainingTime <= 20) {
+            ctx.fillStyle = '#e74c3c';
+            // 添加脉动效果
+            const pulse = 0.7 + Math.sin(Date.now() / 200) * 0.3;
+            ctx.shadowColor = '#e74c3c';
+            ctx.shadowBlur = 20 * pulse;
+        } else {
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 0;
+        }
+        
+        ctx.fillText(`${m}:${s}`, GameConfig.Screen.width / 2, this.hudY + 30); // Lowered slightly
+        
+        // 倒计时标签
+        ctx.font = '14px Arial';
+        ctx.fillStyle = '#aaa';
+        ctx.shadowBlur = 0;
+        ctx.fillText('保护母舰', GameConfig.Screen.width / 2, this.hudY + 60); // Spaced out
 
         // Render Pause Modal
         if (this.isPaused) {
@@ -683,29 +847,10 @@ export default class BattleScene extends BaseScene {
             ctx.restore();
         });
 
-        // Render Skill Selection Overlay
-        if (this.isSelectingSkill) {
-            // Dark Overlay
-            ctx.fillStyle = 'rgba(0,0,0,0.85)';
-            ctx.fillRect(0, 0, GameConfig.Screen.width, this.sceneManager.game.logicHeight);
-
-            // Title
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 40px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('选择升级奖励', GameConfig.Screen.width / 2, 200);
-
-            // Cards
-            // Cards
-            if (this.skillCards) {
-                this.skillCards.forEach(c => c.render(ctx));
-            }
-        }
-
-        // Render Modal
-        if (this.skillModal && this.skillModal.active) {
-            this.skillModal.render(ctx);
-        }
+        // 技能选择已改为自动模式，不显示弹窗
+        
+        // 恢复画布状态（对应render方法开头的ctx.save）
+        ctx.restore();
     }
 
     /**
@@ -716,15 +861,26 @@ export default class BattleScene extends BaseScene {
         this.isPaused = true;
 
         // 获取玩家已选技能用于显示等级
-        const playerSkills = this.skillManager ? this.skillManager.acquiredSkills || [] : [];
-
-        // 创建新的技能选择弹窗
-        this.skillModal = new SkillSelectionModal(this, options || this.skillManager.getSkillOptions(), (skillId) => {
-            this.onSkillSelected(skillId);
-        }, playerSkills);
-        
-        this.isSelectingSkill = true;
-        console.log("Skill selection modal opened");
+        // 简化版：自动随机选择技能，不显示弹窗
+        const skillOptions = options || this.skillManager.getSkillOptions();
+        if (skillOptions && skillOptions.length > 0) {
+            // 随机选择一个技能
+            const randomSkill = skillOptions[Math.floor(Math.random() * skillOptions.length)];
+            this.skillManager.applySkill(randomSkill.id);
+            
+            // 显示浮动文字提示
+            if (this.effectManager) {
+                this.effectManager.spawnFloatingText(
+                    `✨ 获得技能: ${randomSkill.name}`,
+                    GameConfig.Screen.width / 2,
+                    150,
+                    '#f39c12',
+                    28
+                );
+            }
+            
+            console.log(`Auto-selected skill: ${randomSkill.name} (${randomSkill.id})`);
+        }
     }
 
     /**
@@ -735,113 +891,26 @@ export default class BattleScene extends BaseScene {
     }
 
     onSkillSelected(skillId) {
-        console.log("Selected:", skillId);
-        this.skillManager.applySkill(skillId);
-        this.skillModal = null; // 销毁弹窗
-        this.isSelectingSkill = false; // 清除选择状态
-        this.isPaused = false; // 恢复游戏
+        // 简化版：此方法不再使用（自动选择）
+        console.log("Skill selected (auto):", skillId);
     }
 
     /**
-     * 渲染副武器技能按钮
+     * 渲染副武器技能按钮（已禁用 - 能量系统已删除）
      */
     renderSecondarySkillButton(ctx) {
-        const width = GameConfig.Screen.width;
-        const height = this.sceneManager.game.logicHeight || GameConfig.Screen.height;
-        const btnX = width - 80;
-        const btnY = height - 150;
-        const btnRadius = 35;
-        
-        // 保存按钮位置（使用固定坐标，不依赖动态计算）
-        this.secondarySkillBtn = { 
-            x: btnX, 
-            y: btnY, 
-            radius: btnRadius,
-            width: width,
-            height: height
-        };
-        
-        ctx.save();
-        
-        // 按钮背景
-        ctx.beginPath();
-        ctx.arc(btnX, btnY, btnRadius, 0, Math.PI * 2);
-        
-        // 根据状态改变颜色
-        if (this.player.secondarySkill.ready && this.player.energy >= this.player.secondarySkillCost) {
-            // 就绪且能量充足 - 蓝色发光
-            ctx.fillStyle = 'rgba(0, 150, 255, 0.8)';
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#00ccff';
-        } else if (this.player.secondarySkill.ready) {
-            // 就绪但能量不足 - 黄色
-            ctx.fillStyle = 'rgba(255, 200, 0, 0.6)';
-        } else {
-            // 冷却中 - 灰色
-            ctx.fillStyle = 'rgba(100, 100, 100, 0.6)';
-        }
-        
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        
-        // 按钮边框
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        
-        // 导弹图标
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.moveTo(btnX, btnY - 15);
-        ctx.lineTo(btnX + 8, btnY + 12);
-        ctx.lineTo(btnX, btnY + 8);
-        ctx.lineTo(btnX - 8, btnY + 12);
-        ctx.closePath();
-        ctx.fill();
-        
-        // 冷却时间显示
-        if (!this.player.secondarySkill.ready) {
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(Math.ceil(this.player.secondarySkill.cooldown), btnX, btnY + 5);
-        }
-        
-        // 能量消耗提示
-        ctx.fillStyle = '#00ccff';
-        ctx.font = '12px Arial';
-        ctx.fillText(`${this.player.secondarySkillCost}能量`, btnX, btnY + btnRadius + 15);
-        
-        ctx.restore();
-        // 按钮位置已在上面的开头保存
+        // 能量系统已删除，此按钮不再渲染
+        // 如需恢复副武器系统，需先在Player.js中重新添加secondarySkill属性
+        return;
     }
 
     /**
-     * 使用副武器技能
+     * 使用副武器技能（已禁用 - 能量系统已删除）
      */
     activateSecondarySkill() {
-        if (!this.player) return;
-        
-        const missiles = this.player.useSecondarySkill();
-        if (missiles.length > 0) {
-            // 添加到子弹数组
-            this.bullets.push(...missiles);
-            
-            // 视觉效果
-            if (this.effectManager) {
-                this.effectManager.spawnFloatingText(
-                    '导弹齐射!',
-                    this.player.x,
-                    this.player.y - 50,
-                    '#00ccff',
-                    30
-                );
-                this.effectManager.shake(3, 0.2);
-            }
-            
-            // 音效
-            audioManager.play('explosion');
-        }
+        // 能量系统已删除，副武器系统禁用
+        console.log('副武器系统已禁用（能量系统已删除）');
+        return;
     }
 
     activateFighterAbility() {
@@ -897,51 +966,73 @@ export default class BattleScene extends BaseScene {
 
 
     renderPauseModal(ctx, w, h) {
-        // Overlay
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        // 美术设计：深色半透明遮罩
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
         ctx.fillRect(0, 0, w, h);
 
-        // Modal Box
-        const mw = 400, mh = 300;
-        const mx = (w - mw) / 2;
-        const my = (h - mh) / 2;
+        // 卡片式弹框 - 更现代的设计
+        const cardWidth = 300;
+        const cardHeight = 500;  // 高度500px，足够容纳所有按钮
+        const cx = w / 2;
+        const cy = h / 2;
+        const mx = cx - cardWidth / 2;
+        const my = cy - cardHeight / 2;
 
-        RenderUtils.drawPanel(ctx, mx, my, mw, mh);
+        // 绘制卡片背景 - 使用兼容的 RenderUtils
+        RenderUtils.fillRoundRect(ctx, mx, my, cardWidth, cardHeight, 20, 'rgba(30, 30, 40, 0.95)');
+        
+        // 绘制发光边框
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+        ctx.lineWidth = 2;
+        RenderUtils.roundRectPath(ctx, mx, my, cardWidth, cardHeight, 20);
+        ctx.stroke();
+        ctx.restore();
 
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 32px Arial';
+        // 标题 - 使用渐变效果（在500px高度的弹框中居中顶部）
+        ctx.save();
+        const titleGradient = ctx.createLinearGradient(cx - 60, my + 40, cx + 60, my + 40);
+        titleGradient.addColorStop(0, '#00d4ff');
+        titleGradient.addColorStop(1, '#00ff88');
+        ctx.fillStyle = titleGradient;
+        ctx.font = 'bold 28px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('暂停', w / 2, my + 60);
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('游戏暂停', cx, my + 60);
+        
+        // 分隔线
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(mx + 40, my + 85);
+        ctx.lineTo(mx + cardWidth - 40, my + 85);
+        ctx.stroke();
+        ctx.restore();
 
-        // The buttons (Share/End) are actually "virtual" here for rendering
-        // In a real component system, we would add them to uiComponents list when paused
-        // But for simplicity, we mock render them here or assumes they are added to a "pauseUI" list.
-        // Let's create proper buttons in togglePause() instead of hardcoding render here?
-        // That is cleaner.
+        // 渲染暂停菜单按钮
+        if (this.btnContinue) this.btnContinue.render(ctx);
+        if (this.btnShare) this.btnShare.render(ctx);
+        if (this.btnSetting) this.btnSetting.render(ctx);
+        if (this.btnEnd) this.btnEnd.render(ctx);
+        if (this.btnClose) this.btnClose.render(ctx);
     }
 
     handleInput(type, x, y) {
-        // Priority 0: Skill Selection Modal (新版技能选择界面)
-        if (this.skillModal && this.skillModal.active) {
-            const consumed = this.skillModal.handleInput(type, x, y);
-            if (consumed) {
-                return; // 技能选择界面消费了输入
+        // ========== 摇杆区域检测 ==========
+        // 检查触摸点是否在摇杆区域内（避免摇杆拖动触发高度变化）
+        let isInJoystickArea = false;
+        if (this.joystick) {
+            const joyX = this.joystick.x || (GameConfig.Screen.width - 120);
+            const joyY = this.joystick.y || (this.sceneManager.game.logicHeight - 120);
+            const joyRadius = this.joystick.radius || 80;
+            const distToJoystick = Math.sqrt((x - joyX) ** 2 + (y - joyY) ** 2);
+            if (distToJoystick < joyRadius * 1.5) {
+                isInJoystickArea = true;
             }
         }
         
-        // Priority 0.5: 旧版技能选择（兼容）
-        if (this.isSelectingSkill && this.skillCards && type === 'touchstart') {
-            for (let i = 0; i < this.skillCards.length; i++) {
-                const card = this.skillCards[i];
-                if (card.handleInput && card.handleInput(type, x, y)) {
-                    if (this.selectSkill) {
-                        this.selectSkill(card.skill);
-                    }
-                    return;
-                }
-            }
-            return; // Block other inputs
-        }
+        // 高度层滑动控制 (已移除)
+        // if (!isInJoystickArea) { ... }
 
         // Priority 1: UI Components (Pause, Joystick, etc)
         // We iterate generic UI components mainly for clicks
@@ -950,25 +1041,6 @@ export default class BattleScene extends BaseScene {
                 const comp = this.uiComponents[i];
                 if (comp.handleInput(type, x, y)) {
                     return; // Consumed
-                }
-            }
-            
-            // ========== 副武器技能按钮检测 ==========
-            if (this.secondarySkillBtn && this.player) {
-                const btn = this.secondarySkillBtn;
-                const dx = x - btn.x;
-                const dy = y - btn.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                // 调试输出（首次点击按钮区域时）
-                if (dist <= btn.radius * 1.5) { // 1.5倍容错区域
-                    console.log(`Skill button touched! dist=${dist.toFixed(1)}, btn=(${btn.x},${btn.y}), touch=(${x},${y})`);
-                }
-                
-                if (dist <= btn.radius * 1.2) { // 1.2倍容错，更容易点击
-                    console.log('Skill button activated!');
-                    this.activateSecondarySkill();
-                    return; // 消费此输入
                 }
             }
             
@@ -999,42 +1071,54 @@ export default class BattleScene extends BaseScene {
     togglePause() {
         this.isPaused = !this.isPaused;
         const width = GameConfig.Screen.width;
+        const height = this.sceneManager.game.logicHeight;
 
         if (this.isPaused) {
-            // Create Pause Menu Buttons
+            // 美术设计：使用卡片式布局，更现代、更简洁
             const cx = width / 2;
-            const cy = this.sceneManager.game.logicHeight / 2;
+            const cy = height / 2;
+            const btnWidth = 240;
+            const btnHeight = 50;  // 增加按钮高度到50px
+            const btnSpacing = 20; // 增加间距
+            const startY = cy - 180; // 起始位置
+            
+            // 主按钮（继续游戏）- 大而突出
+            this.btnContinue = new Button(cx - btnWidth/2, startY, btnWidth, btnHeight, '▶ 继续游戏');
+            this.btnContinue.setStyle('#00b894', '#fff', 22, 25).setCallback(() => this.togglePause());
+            
+            // 分享按钮 - 第二行
+            this.btnShare = new Button(cx - btnWidth/2, startY + btnHeight + btnSpacing, btnWidth, btnHeight, '分享');
+            this.btnShare.setStyle('#0984e3', '#fff', 20, 20).setCallback(() => {
+                wx.shareAppMessage({ title: `我在太空幸存者中得了${this.score}分！` });
+            });
+            
+            // 设置按钮 - 第三行
+            this.btnSetting = new Button(cx - btnWidth/2, startY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '设置');
+            this.btnSetting.setStyle('#636e72', '#fff', 20, 20).setCallback(() => {
+                console.log('设置功能待实现');
+            });
 
-            this.btnContinue = new Button(cx - 100, cy - 20, 200, 60, '继续游戏');
-            this.btnContinue.setStyle('#0984e3', '#fff', 24).setCallback(() => this.togglePause());
-
-            this.btnEnd = new Button(cx - 100, cy + 60, 200, 60, '结束游戏');
-            this.btnEnd.setStyle('#d63031', '#fff', 24).setCallback(() => {
+            // 结束游戏 - 第四行
+            this.btnEnd = new Button(cx - 80, startY + (btnHeight + btnSpacing) * 3, 160, 44, '结束游戏');
+            this.btnEnd.setStyle('rgba(255, 107, 107, 0.2)', '#ff6b6b', 18, 22).setCallback(() => {
                 this.endGame();
             });
 
-            this.btnShare = new Button(cx - 100, cy + 140, 200, 60, '分享游戏');
-            this.btnShare.setStyle('#00b894', '#fff', 24).setCallback(() => {
-                wx.shareAppMessage({ title: `我在太空幸存者中得了${this.score}分！` });
-            });
+            // 关闭按钮 - 右上角 (调整位置，确保在卡片内)
+            this.btnClose = new Button(cx + 110, cy - 220, 40, 40, '✕');
+            this.btnClose.setStyle('rgba(255,255,255,0.15)', '#fff', 20, 20).setCallback(() => this.togglePause());
 
-            // Close (Delete) Button - Top Right of Modal
-            const mw = 400, mh = 300;
-            const mx = (width - mw) / 2; // Center X
-            const my = (this.sceneManager.game.logicHeight - mh) / 2; // Center Y
-
-            this.btnClose = new Button(mx + mw - 40, my - 10, 50, 50, 'X');
-            this.btnClose.setStyle('#ff7675', '#fff', 24, 25).setCallback(() => this.togglePause());
-
-            this.uiComponents.push(this.btnContinue, this.btnEnd, this.btnShare, this.btnClose);
+            this.uiComponents.push(this.btnContinue, this.btnShare, this.btnSetting, this.btnEnd, this.btnClose);
 
         } else {
             // Remove Pause Menu Buttons
-            // Keep only btnPause
-            this.uiComponents = [this.btnPause, this.joystick];
+            // Keep btnPause and joystick (Removed altitude buttons)
+            // Ensure btnPause is last (topmost) to receive input first
+            this.uiComponents = [this.joystick, this.btnPause];
             this.btnContinue = null;
             this.btnEnd = null;
             this.btnShare = null;
+            this.btnSetting = null;
             this.btnClose = null;
         }
     }
@@ -1052,69 +1136,41 @@ export default class BattleScene extends BaseScene {
         this.maxExp = Math.floor(this.maxExp * 1.5);
 
         console.log(`Level Up! Lv.${this.level}`);
-        this.showLevelUpUI();
-    }
-
-    showLevelUpUI() {
-        this.isPaused = true;
-        this.isSelectingSkill = true;
-
-        // Generate 3 Random Options
-        const options = [];
-        for (let i = 0; i < 3; i++) {
-            const rand = this.skills[Math.floor(Math.random() * this.skills.length)];
-            options.push(rand);
-        }
-
-        // Create Cards
-        this.skillCards = [];
-        const cardW = 500;
-        const cardH = 100;
-        const startY = this.sceneManager.game.logicHeight / 2 - 200;
-        const centerX = (GameConfig.Screen.width - cardW) / 2;
-
-        options.forEach((skill, index) => {
-            const card = new SkillCard(centerX, startY + index * 120, cardW, cardH, skill, index);
-            this.skillCards.push(card);
-        });
-    }
-
-    selectSkill(skill) {
-        console.log('Selected Skill:', skill.name);
-
-        // Apply Skill Effect
-        if (this.player) {
-            switch (skill.id) {
-                case 'multishot':
-                    this.player.applyBuff('barrage');
-                    break;
-                case 'speed':
-                    this.player.applyBuff('move_speed');
-                    break;
-                case 'heal':
-                    this.player.healPercent(0.3);
-                    break;
-                case 'magnet':
-                    this.magnetRange *= 1.5;
-                    break;
+        
+        // 自动随机选择技能（不显示弹窗）
+        if (this.skills && this.skills.length > 0) {
+            const randomSkill = this.skills[Math.floor(Math.random() * this.skills.length)];
+            
+            // 应用技能效果
+            if (this.player) {
+                switch (randomSkill.id) {
+                    case 'multishot':
+                        this.player.applyBuff('barrage');
+                        break;
+                    case 'speed':
+                        this.player.applyBuff('move_speed');
+                        break;
+                    case 'heal':
+                        this.player.healPercent(0.3);
+                        break;
+                    case 'magnet':
+                        this.magnetRange *= 1.5;
+                        break;
+                }
             }
-
-            this.toast.text = `获得: ${skill.name}`;
-            this.toast.active = true;
-            this.toast.timer = 2;
-            this.toast.y = this.sceneManager.game.logicHeight / 2;
-        }
-
-        // Resume
-        this.isSelectingSkill = false;
-        this.isPaused = false;
-        this.skillCards = [];
-
-        // Check if enough EXP for another level?
-        if (this.exp >= this.maxExp) {
-            // Delay slightly or call immediately?
-            // Calling immediately might be abrupt. Let's do it next frame or simply allow it.
-            // For now, let the player play a bit.
+            
+            // 显示获得技能的提示
+            if (this.effectManager) {
+                this.effectManager.spawnFloatingText(
+                    `✨ Lv.${this.level}: ${randomSkill.name}`,
+                    GameConfig.Screen.width / 2,
+                    180,
+                    '#f39c12',
+                    28
+                );
+            }
+            
+            console.log(`Auto-selected skill: ${randomSkill.name}`);
         }
     }
 

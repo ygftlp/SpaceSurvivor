@@ -6,8 +6,8 @@ export default class F16 extends BaseFighter {
         this.name = '战隼 F-16';
         this.desc = '轻型多用途战机，高推重比，机动灵活。';
         this.hp = 80; // Lower HP
-        this.speed = 12; // High speed
-        this.damage = 10; // Standard Firepower
+        this.speed = 14; // 12→14 (高速战机)
+        this.damage = 12; // 10→12 (标准火力)
         this.unlockCost = 800; // Cheaper than J-20/Su-57
         this.engineOffsets = [{ x: 0, y: 95 }]; // Single Engine
         this.thrustColor = '#ff9900'; // Orange/Yellow flame
