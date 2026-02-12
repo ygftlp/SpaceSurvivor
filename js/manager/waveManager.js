@@ -45,6 +45,7 @@ export default class WaveManager {
         // 导演提示状态
         this.currentHint = null;
         this.hintTimer = 0;
+        this.maxEnemies = 24;
     }
 
     startSurvival() {
@@ -58,6 +59,7 @@ export default class WaveManager {
         this.currentAct = 1;
         this.currentHint = null;
         this.hintTimer = 0;
+        this.maxEnemies = 24;
         
         console.log('=== 导演系统启动 (Pacing Optimized) ===');
         console.log('游戏时长: 90秒');
@@ -71,6 +73,7 @@ export default class WaveManager {
 
     update(dt) {
         this.levelTime += dt;
+        this.updateCurrentAct();
         
         // 更新导演提示计时器
         if (this.hintTimer > 0) {
@@ -89,8 +92,10 @@ export default class WaveManager {
                 this.nextSpawnTime -= dt;
                 
                 if (this.nextSpawnTime <= 0) {
-                    this.spawnFromScript(type, count, hint);
-                    this.nextSpawnTime = interval; // 使用剧本设定的间隔
+                    const spawnDelay = this.spawnFromScript(type, count, hint);
+                    this.nextSpawnTime = typeof spawnDelay === 'number'
+                        ? spawnDelay
+                        : Math.max(interval, 0.1); // 0间隔波次也保留最小帧间隔，避免死循环刷怪
                 }
                 break;
             } else if (this.levelTime >= end) {
@@ -106,7 +111,22 @@ export default class WaveManager {
 
     spawnFromScript(type, count, hint) {
         console.log(`[剧本] 时间:${this.levelTime.toFixed(1)}s 生成:${type} 数量:${count}`);
-        
+
+        // 性能保护：敌人过多时削减刷怪（避免中低端设备掉帧）
+        const enemyCount = this.getActiveEnemyCount();
+        if (enemyCount >= this.maxEnemies && type !== 'BOSS') {
+            console.log(`[导演] 敌人数量过高(${enemyCount})，本波延后`);
+            return 1.2;
+        }
+
+        let spawnBudget = type === 'BOSS' ? count : Math.max(0, this.maxEnemies - enemyCount);
+        const spawnEnemyWithBudget = (enemyType) => {
+            if (spawnBudget <= 0) return false;
+            this.spawnEnemy(enemyType);
+            spawnBudget--;
+            return true;
+        };
+
         // 处理特殊类型
         switch(type) {
             case 'mixed_basic':
@@ -114,7 +134,7 @@ export default class WaveManager {
                 for (let i = 0; i < count; i++) {
                     const types = ['Drone_Small', 'Drone_Scout', 'Drone_Kamikaze'];
                     const randomType = types[Math.floor(Math.random() * types.length)];
-                    this.spawnEnemy(randomType);
+                    if (!spawnEnemyWithBudget(randomType)) break;
                 }
                 break;
                 
@@ -123,14 +143,14 @@ export default class WaveManager {
                 for (let i = 0; i < count; i++) {
                     const types = ['Drone_Small', 'Drone_Small', 'Drone_Kamikaze'];
                     const randomType = types[Math.floor(Math.random() * types.length)];
-                    this.spawnEnemy(randomType);
+                    if (!spawnEnemyWithBudget(randomType)) break;
                 }
                 break;
                 
             case 'mixed_elite':
                 // 混合精英
                 for (let i = 0; i < count; i++) {
-                    this.spawnEnemy('Elite_Fighter');
+                    if (!spawnEnemyWithBudget('Elite_Fighter')) break;
                 }
                 break;
                 
@@ -140,7 +160,7 @@ export default class WaveManager {
                     const types = ['Drone_Small', 'Drone_Kamikaze'];
                     const randomType = types[Math.floor(Math.random() * types.length)];
                     setTimeout(() => {
-                        if (this.game && this.game.enemies) {
+                        if (this.game && this.game.enemies && this.getActiveEnemyCount() < this.maxEnemies) {
                             this.spawnEnemy(randomType);
                         }
                     }, i * 800);
@@ -151,7 +171,7 @@ export default class WaveManager {
                 // BOSS前奏 - 清理敌人并生成杂兵
                 console.log('BOSS前奏：清理战场');
                 for (let i = 0; i < count; i++) {
-                    this.spawnEnemy('Drone_Small');
+                    if (!spawnEnemyWithBudget('Drone_Small')) break;
                 }
                 break;
                 
@@ -174,7 +194,7 @@ export default class WaveManager {
             default:
                 // 标准敌人生成
                 for (let i = 0; i < count; i++) {
-                    this.spawnEnemy(type);
+                    if (!spawnEnemyWithBudget(type)) break;
                 }
         }
         
@@ -187,6 +207,32 @@ export default class WaveManager {
             // 在游戏场景中显示提示
             if (this.game && this.game.showDirectorHint) {
                 this.game.showDirectorHint(hint);
+            }
+        }
+
+        return null;
+    }
+
+    getActiveEnemyCount() {
+        if (!this.game || !Array.isArray(this.game.enemies)) return 0;
+        return this.game.enemies.filter(enemy => enemy && enemy.active).length;
+    }
+
+    updateCurrentAct() {
+        let newAct = 1;
+        if (this.levelTime >= 60) {
+            newAct = 3;
+        } else if (this.levelTime >= 30) {
+            newAct = 2;
+        }
+
+        if (newAct !== this.currentAct) {
+            this.currentAct = newAct;
+            const actHint = `第${newAct}幕开始`; 
+            this.currentHint = actHint;
+            this.hintTimer = 3.5;
+            if (this.game && this.game.showDirectorHint) {
+                this.game.showDirectorHint(actHint);
             }
         }
     }

@@ -491,80 +491,109 @@ export default class SkillDatabase {
      */
     static getOptions(playerLevel, selectedSkills = []) {
         const options = [];
+        const selectedById = new Map(selectedSkills.map(s => [s.id, s]));
         const selectedIds = selectedSkills.map(s => s.id);
-        const selectedCategories = selectedSkills.map(s => s.category);
-        
+
         // 确定当前阶段
         let phase = 'early';
         if (playerLevel >= 13) phase = 'late';
         else if (playerLevel >= 6) phase = 'mid';
-        
-        // 获取可用技能池
+
+        // 获取可用技能池：允许“未满级技能”再次出现
         const availableSkills = Object.values(Skills).filter(skill => {
-            // 排除已选
-            if (selectedIds.includes(skill.id)) return false;
-            
+            const ownedSkill = selectedById.get(skill.id);
+            const ownedLevel = ownedSkill ? (ownedSkill.currentLevel || ownedSkill.level || 1) : 0;
+
+            // 已满级技能不再出现
+            if (ownedLevel >= skill.maxLevel) return false;
+
             // 检查等级要求
             if (skill.tier === 2 && playerLevel < 4) return false;
             if (skill.tier === 3 && playerLevel < 8) return false;
             if (skill.tier === 4 && playerLevel < 12) return false;
-            
-            // 检查前置条件
+
+            // 检查前置条件（至少满足一个）
             if (skill.prerequisites && skill.prerequisites.length > 0) {
                 const hasPrereq = skill.prerequisites.some(prereq => selectedIds.includes(prereq));
                 if (!hasPrereq) return false;
             }
-            
-            // 检查互斥
-            for (let group of MUTUALLY_EXCLUSIVE) {
-                if (group.includes(skill.id)) {
-                    const hasExclusive = group.some(id => selectedIds.includes(id) && id !== skill.id);
-                    if (hasExclusive) return false;
+
+            // 互斥检查：只对“未拥有技能”生效，允许已拥有技能继续升级
+            if (!ownedSkill) {
+                for (let group of MUTUALLY_EXCLUSIVE) {
+                    if (group.includes(skill.id)) {
+                        const hasExclusive = group.some(id => selectedIds.includes(id) && id !== skill.id);
+                        if (hasExclusive) return false;
+                    }
                 }
             }
-            
+
             return true;
         });
-        
+
+        if (availableSkills.length === 0) return [];
+
         // 按稀有度分组
         const byRarity = { common: [], rare: [], legendary: [] };
         availableSkills.forEach(skill => {
             byRarity[skill.rarity].push(skill);
         });
-        
-        // 加权随机选择
+
         const weights = RARITY_WEIGHTS[phase];
-        while (options.length < 3 && availableSkills.length > 0) {
-            const rand = Math.random() * 100;
-            let rarity;
-            if (rand < weights.legendary) rarity = 'legendary';
-            else if (rand < weights.legendary + weights.rare) rarity = 'rare';
-            else rarity = 'common';
-            
+        const rarityOrder = ['legendary', 'rare', 'common'];
+
+        const pickByRarity = (rarity, usedCategories) => {
             const pool = byRarity[rarity].filter(s => !options.includes(s));
-            if (pool.length === 0) continue;
-            
-            // 权重排序后选择
-            pool.sort((a, b) => b.weight - a.weight);
-            const skill = pool[Math.floor(Math.random() * Math.min(3, pool.length))];
-            options.push(skill);
+            if (pool.length === 0) return null;
+
+            // 优先提供分类多样性，避免3张卡全是同一玩法
+            const diversePool = pool.filter(s => !usedCategories.has(s.category));
+            const source = diversePool.length > 0 ? diversePool : pool;
+
+            source.sort((a, b) => b.weight - a.weight);
+            return source[Math.floor(Math.random() * Math.min(3, source.length))];
+        };
+
+        // 最多尝试12次，避免在稀有度池为空时长循环
+        let attempts = 0;
+        while (options.length < 3 && attempts < 12) {
+            attempts++;
+            const rand = Math.random() * 100;
+            const usedCategories = new Set(options.map(s => s.category));
+
+            let preferredRarity;
+            if (rand < weights.legendary) preferredRarity = 'legendary';
+            else if (rand < weights.legendary + weights.rare) preferredRarity = 'rare';
+            else preferredRarity = 'common';
+
+            let picked = pickByRarity(preferredRarity, usedCategories);
+            if (!picked) {
+                for (const rarity of rarityOrder) {
+                    picked = pickByRarity(rarity, usedCategories);
+                    if (picked) break;
+                }
+            }
+
+            if (!picked) break;
+            options.push(picked);
         }
-        
+
         // 保底机制：确保至少有一个输出技能
         const hasDamage = options.some(s => s.category === 'core_damage' || s.category === 'projectile');
-        if (!hasDamage && options.length < 3) {
-            const damageSkills = availableSkills.filter(s => 
-                (s.category === 'core_damage' || s.category === 'projectile') && 
+        if (!hasDamage) {
+            const damageSkill = availableSkills.find(s =>
+                (s.category === 'core_damage' || s.category === 'projectile') &&
                 !options.includes(s)
             );
-            if (damageSkills.length > 0) {
-                options.push(damageSkills[0]);
+            if (damageSkill) {
+                if (options.length >= 3) options[options.length - 1] = damageSkill;
+                else options.push(damageSkill);
             }
         }
-        
+
         return options.slice(0, 3);
     }
-    
+
     /**
      * 获取技能详细信息
      */
