@@ -195,6 +195,74 @@ export default class TitanBattleship extends BaseBoss {
             ctx.restore();
         }
 
+        this.renderModuleTelegraph(ctx);
+
+        ctx.restore();
+    }
+
+    renderModuleTelegraph(ctx) {
+        const shieldActive = !!(this.modules.shield && this.modules.shield.hp > 0);
+        const dimAlpha = shieldActive ? 0.25 : 0.75;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        const drawMarker = (x, y, color, radius, label) => {
+            ctx.save();
+            ctx.translate(x, y);
+            const pulse = 1 + Math.sin(this.engineTime * 6) * 0.06;
+            ctx.scale(pulse, pulse);
+
+            ctx.globalAlpha = dimAlpha;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = color;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.globalAlpha = dimAlpha * 0.25;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius - 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (label) {
+                ctx.globalAlpha = dimAlpha;
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(label, 0, radius + 14);
+            }
+
+            ctx.restore();
+        };
+
+        (this.modules.mainTurrets || []).forEach(t => {
+            if (!t.active) return;
+            drawMarker(t.x, t.y, '#ff9f0a', 18, '主炮');
+        });
+
+        (this.modules.secondaryGuns || []).forEach(g => {
+            if (!g.active) return;
+            drawMarker(g.x, g.y, '#ffd60a', 14, null);
+        });
+
+        (this.modules.hangars || []).forEach(h => {
+            if (!h.active) return;
+            drawMarker(h.x, h.y, '#bf5af2', 20, '机库');
+        });
+
+        const coreExposed = !!(this.modules.core && this.modules.core.exposed);
+        if (coreExposed && this.modules.core) {
+            const coreX = this.modules.core.x || 0;
+            const coreY = this.modules.core.y || -20;
+            const radius = this.modules.core.radius || 34;
+            drawMarker(coreX, coreY, '#ff3b30', radius, '弱点');
+        }
+
         ctx.restore();
     }
 }

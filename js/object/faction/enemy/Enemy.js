@@ -8,6 +8,7 @@ import { MovementStrategies } from './strategy/movement.js';
 import { WeaponStrategies } from './strategy/weapon.js';
 import RenderUtils from '../../../utils/renderUtils.js';
 import EnemyDesign from './EnemyDesign.js';
+import { GameConfig } from '../../../config.js';
 
 export default class Enemy {
     /**
@@ -84,8 +85,9 @@ export default class Enemy {
             this.altitude = Math.max(100, Math.min(900, this.altitude));
         }
 
-        // 4. Boundary Check - 修复：所有边界都应该让敌人失效
-        if (this.y > 1500 || this.y < -200 || this.x < -100 || this.x > 1000) {
+        const screenW = GameConfig.Screen.width;
+        const screenH = (this.scene && this.scene.game && this.scene.game.logicHeight) ? this.scene.game.logicHeight : GameConfig.Screen.height;
+        if (this.y > screenH + 220 || this.y < -220 || this.x < -160 || this.x > screenW + 160) {
             this.active = false; // 无论从哪个边界离开屏幕，都标记为失效
         }
     }

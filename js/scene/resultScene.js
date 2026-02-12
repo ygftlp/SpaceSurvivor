@@ -17,6 +17,9 @@ export default class ResultScene extends BaseScene {
 
         this.score = 0;
         this.gold = 0;
+        this.fighterId = null;
+        this.buildSummary = null;
+        this.buildTags = [];
 
         // 按钮布局
         this.btnRestart = { x: 0, y: 0, w: 200, h: 60 };
@@ -31,16 +34,19 @@ export default class ResultScene extends BaseScene {
         this.gold = params.gold || 0;
         this.timeSeconds = params.timeSeconds || 0;
         this.timeMinutes = Math.floor(this.timeSeconds / 60);
+        this.fighterId = params.fighterId || null;
+        this.buildSummary = params.buildSummary || null;
+        this.buildTags = this.getBuildTags(this.buildSummary);
 
         // 计算按钮位置 (居中, 靠下)
         const cx = this.width / 2;
         const cy = this.height / 2;
 
         this.btnRestart.x = cx - 100;
-        this.btnRestart.y = cy + 100;
+        this.btnRestart.y = cy + 210;
 
         this.btnHome.x = cx - 100;
-        this.btnHome.y = cy + 180;
+        this.btnHome.y = cy + 290;
     }
 
     render(ctx) {
@@ -85,6 +91,8 @@ export default class ResultScene extends BaseScene {
         ctx.fillText('获得金币', this.width / 2 + 100, 480);
         ctx.fillStyle = '#FFD700';
         ctx.fillText(`+${this.gold}`, this.width / 2 + 100, 520);
+
+        this.renderRecapPanel(ctx);
 
         // 按钮 - Restart
         ctx.fillStyle = '#2ecc71';
@@ -179,6 +187,24 @@ export default class ResultScene extends BaseScene {
         ctx.fillText(`得分: ${this.score}`, px + 40, py + 360);
         ctx.fillText(`金币: +${this.gold}`, px + 40, py + 400);
 
+        if (this.buildTags && this.buildTags.length > 0) {
+            ctx.fillStyle = '#00ccff';
+            ctx.font = '18px Arial';
+            ctx.fillText(`流派: ${this.buildTags.join(' / ')}`, px + 40, py + 440);
+        }
+
+        const topSkills = this.getTopSkillsForPoster();
+        if (topSkills.length > 0) {
+            ctx.fillStyle = '#bdc3c7';
+            ctx.font = '16px Arial';
+            ctx.fillText('本局构筑:', px + 40, py + 480);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '16px Arial';
+            topSkills.forEach((s, i) => {
+                ctx.fillText(`- ${s.name} Lv.${s.level}`, px + 40, py + 505 + i * 22);
+            });
+        }
+
         // Date
         const date = new Date().toLocaleDateString();
         ctx.textAlign = 'center';
@@ -221,5 +247,107 @@ export default class ResultScene extends BaseScene {
 
     hitTest(x, y, btn) {
         return btn && x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h;
+    }
+
+    renderRecapPanel(ctx) {
+        const panelW = Math.min(620, this.width - 80);
+        const panelH = 260;
+        const x = (this.width - panelW) / 2;
+        const y = 580;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(x, y, panelW, panelH);
+        ctx.strokeStyle = 'rgba(0,168,255,0.35)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, panelW, panelH);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('本局复盘', x + 18, y + 34);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '14px Arial';
+        const fighterText = this.fighterId ? `战机: ${this.fighterId}` : '战机: -';
+        ctx.fillText(fighterText, x + 18, y + 58);
+
+        const tagsText = this.buildTags && this.buildTags.length > 0 ? `流派: ${this.buildTags.join(' / ')}` : '流派: -';
+        ctx.fillText(tagsText, x + 18, y + 78);
+
+        const summary = this.buildSummary;
+        if (!summary || !Array.isArray(summary.skills) || summary.skills.length === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('本局未获得技能，下一局记得拾取经验球升级！', x + panelW / 2, y + 150);
+            ctx.restore();
+            return;
+        }
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.font = '14px Arial';
+        ctx.fillText(`技能数: ${summary.totalSkills}  总等级: ${summary.totalLevels}`, x + 18, y + 104);
+
+        const rarityLine = `稀有度: 普通 ${summary.rarities.common || 0} · 稀有 ${summary.rarities.rare || 0} · 传说 ${summary.rarities.legendary || 0}`;
+        ctx.fillText(rarityLine, x + 18, y + 124);
+
+        const list = summary.skills
+            .slice()
+            .sort((a, b) => (this.rarityWeight(b.rarity) - this.rarityWeight(a.rarity)) || (b.level - a.level))
+            .slice(0, 6);
+
+        const startY = y + 154;
+        list.forEach((s, i) => {
+            const rowY = startY + i * 26;
+            const color = this.rarityColor(s.rarity);
+            ctx.fillStyle = color;
+            ctx.fillRect(x + 18, rowY - 14, 8, 8);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '16px Arial';
+            ctx.fillText(`${s.name}  Lv.${s.level}/${s.maxLevel}`, x + 34, rowY - 6);
+        });
+
+        ctx.restore();
+    }
+
+    getBuildTags(summary) {
+        if (!summary || !summary.categories) return [];
+        const entries = Object.entries(summary.categories)
+            .filter(([, v]) => Number.isFinite(v) && v > 0)
+            .sort((a, b) => b[1] - a[1]);
+        const map = {
+            core_damage: '火力流',
+            projectile: '弹幕流',
+            attack_speed: '攻速流',
+            survival: '生存流',
+            mobility: '机动流',
+            mechanic: '机制流',
+            energy: '能量流'
+        };
+        return entries.slice(0, 2).map(([k]) => map[k] || k);
+    }
+
+    rarityWeight(r) {
+        if (r === 'legendary') return 3;
+        if (r === 'rare') return 2;
+        return 1;
+    }
+
+    rarityColor(r) {
+        if (r === 'legendary') return '#f39c12';
+        if (r === 'rare') return '#3498db';
+        return '#95a5a6';
+    }
+
+    getTopSkillsForPoster() {
+        const summary = this.buildSummary;
+        if (!summary || !Array.isArray(summary.skills)) return [];
+        return summary.skills
+            .slice()
+            .sort((a, b) => (this.rarityWeight(b.rarity) - this.rarityWeight(a.rarity)) || (b.level - a.level))
+            .slice(0, 3);
     }
 }

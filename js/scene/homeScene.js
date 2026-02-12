@@ -84,6 +84,8 @@ export default class HomeScene extends BaseScene {
         // 3. 标题
         RenderUtils.drawGlowingText(ctx, '太空幸存者', this.width / 2, 180, 50, '#fff', '#00A8FF');
 
+        this.renderValueProposition(ctx);
+
         // 4. 资源栏 (简化，整合到 Profile 旁或保留)
         // 这里仅在右上角显示金币，作为 Top Bar
         this.renderTopBar(ctx);
@@ -159,6 +161,27 @@ export default class HomeScene extends BaseScene {
         ctx.textBaseline = 'middle';
         ctx.fillText(goldStr, this.width - 20, cy);
         ctx.textBaseline = 'alphabetic'; // Reset
+    }
+
+    renderValueProposition(ctx) {
+        const x = this.width / 2;
+        const y = 240;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.font = '18px Arial';
+        ctx.fillText('90秒一局 · 护航母舰跃迁 · 三选一构筑流派', x, y);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = '14px Arial';
+        ctx.fillText('轻松上手但不无脑：拆机库→暴露核心→击破BOSS', x, y + 26);
+
+        ctx.fillStyle = 'rgba(0, 168, 255, 0.18)';
+        ctx.fillRect(this.width / 2 - 220, y + 44, 440, 1);
+
+        ctx.restore();
     }
 
     renderEquipmentSlots(ctx) {

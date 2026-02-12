@@ -24,7 +24,8 @@ export default class Player {
 
         // Stats from Instance
         this.hp = this.fighter.hp;
-        this.speed = this.fighter.speed;
+        this.maxHp = this.fighter.hp;
+        this.speed = this.fighter.speed * 40;
 
         // Sprite not needed, delegate to this.fighter.render()
 
@@ -40,6 +41,15 @@ export default class Player {
         // ========== 三维高度层系统 (3D Altitude System) - 已移除 ==========
         // 为了简化操作，移除了手动高度控制，改为自动高度适应
         this.altitude = 500; // 固定为中空
+
+        this.maxEnergy = 100;
+        this.energy = 100;
+        this.energyRegenRate = 12;
+        this.energyCostPerShot = 1;
+        this.overheatDuration = 1500;
+        this.canShootWhileOverheated = false;
+        this.overheatedUntil = 0;
+        this.invulnerableUntil = 0;
 
     }
 
@@ -75,7 +85,7 @@ export default class Player {
     }
 
     healPercent(percent) {
-        const maxHp = this.fighter.hp;
+        const maxHp = this.maxHp;
         const amount = Math.floor(maxHp * percent);
         this.hp = Math.min(this.hp + amount, maxHp);
         console.log(`Healed ${amount} HP. Current: ${this.hp}/${maxHp}`);
@@ -84,6 +94,7 @@ export default class Player {
     update(deltaTime) {
         let newBullets = [];
         const now = Date.now();
+        const dtSeconds = Math.max(0, deltaTime);
         
         // ========== 高度系统更新 (已移除) ==========
         // 保持高度固定
@@ -96,9 +107,16 @@ export default class Player {
             this.fighter.update(deltaTime);
         }
         
-        // ========== 自动射击（已简化：无能量限制） ==========
+        this.energy = Math.min(this.maxEnergy, this.energy + this.energyRegenRate * dtSeconds);
+
+        const isOverheated = now < this.overheatedUntil;
+
+        // ========== 自动射击 ==========
         if (this.isShooting) {
             if (now - this.lastShootTime > this.shootInterval) {
+                if (isOverheated && !this.canShootWhileOverheated) {
+                    return newBullets;
+                }
                 const bullets = this.shoot();
                 if (bullets.length > 0) {
                     newBullets.push(...bullets);
@@ -111,30 +129,58 @@ export default class Player {
     }
 
     shoot() {
-        // 自动射击（已简化：无能量消耗）
+        if (this.energy < this.energyCostPerShot) {
+            this.energy = 0;
+            this.overheatedUntil = Date.now() + this.overheatDuration;
+            return [];
+        }
+        this.energy -= this.energyCostPerShot;
+
         const bullets = [];
         const stats = this.effectiveStats; // Use effective stats
         const startX = this.x;
         const startY = this.y - this.height / 2;
+        const bounds = {
+            minX: -100,
+            maxX: GameConfig.Screen.width + 100,
+            minY: -100,
+            maxY: (this.screenHeight || 1280) + 100
+        };
+        const bulletConfig = { bounds };
 
         // 根据 count (弹道数量) 计算子弹
         // 简单实现：如果是 1 发，居中；多发则根据 spread 扇形分布
         if (stats.count === 1) {
-            bullets.push(new Bullet(startX, startY, -90, stats.speed, stats.damage, false));
+            bullets.push(new Bullet(startX, startY, -90, stats.speed, stats.damage, false, bulletConfig));
         } else {
             // 多发逻辑 (例如 count=3, spread=15 -> -105, -90, -75)
             const mid = (stats.count - 1) / 2;
             for (let i = 0; i < stats.count; i++) {
                 const angleOffset = (i - mid) * stats.spread;
                 const angle = -90 + angleOffset;
-                bullets.push(new Bullet(startX, startY, angle, stats.speed, stats.damage, false));
+                bullets.push(new Bullet(startX, startY, angle, stats.speed, stats.damage, false, bulletConfig));
             }
         }
 
         return bullets;
     }
     
-    // 能量系统已删除 - 自动射击无限制
+    takeDamage(amount) {
+        const now = Date.now();
+        if (now < this.invulnerableUntil) return false;
+        if (!Number.isFinite(amount) || amount <= 0) return false;
+        this.hp -= amount;
+        this.invulnerableUntil = now + 700;
+        return true;
+    }
+
+    overchargeEnergy(amount) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        this.energy = Math.min(this.maxEnergy, this.energy + amount);
+        if (this.energy > 0) {
+            this.overheatedUntil = 0;
+        }
+    }
 
 
     render(ctx) {
@@ -142,6 +188,10 @@ export default class Player {
 
         // Translate to Player Position
         ctx.translate(this.x, this.y);
+        if (Date.now() < this.invulnerableUntil) {
+            const blink = Math.floor(Date.now() / 80) % 2 === 0;
+            ctx.globalAlpha = blink ? 0.5 : 0.9;
+        }
 
         // Delegate rendering to the Fighter Instance
         // It renders around 0,0 locally

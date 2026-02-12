@@ -286,7 +286,7 @@ export default class WaveManager {
         if (!this.game) return;
         
         console.log('生成BOSS：泰坦战舰！');
-        const boss = new TitanBattleship(this.game, GameConfig.Screen.width / 2, 150);
+        const boss = new TitanBattleship(GameConfig.Screen.width / 2, 150, this.game);
         this.game.enemies.push(boss);
         
         // BOSS战特殊处理

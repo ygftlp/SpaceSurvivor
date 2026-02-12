@@ -14,7 +14,6 @@ import RenderUtils from '../utils/renderUtils.js';
 
 import Button from '../object/ui/Button.js';
 import Joystick from '../object/ui/Joystick.js';
-import SkillCard from '../object/ui/SkillCard.js';
 import Wreckage from '../object/item/wreckage.js';
 import SupplyCrate from '../object/item/SupplyCrate.js';
 import Obstacle from '../object/obstacle.js';
@@ -55,16 +54,8 @@ export default class BattleScene extends BaseScene {
         this.btnPause = null;
         this.joystick = null;
         this.uiComponents = [];
-        this.skillCards = []; // New UI for skills
         this.isSelectingSkill = false;
-
-        // Skill Pool
-        this.skills = [
-            { id: 'multishot', name: '多重射击', desc: '主炮发射数量 +1', iconColor: '#ff0000' },
-            { id: 'speed', name: '引擎超频', desc: '移速 +20%', iconColor: '#00ff00' },
-            { id: 'magnet', name: '磁力场', desc: '拾取范围 +50%', iconColor: '#0000ff' },
-            { id: 'heal', name: '纳米修复', desc: '立即恢复 30% 生命', iconColor: '#ff00ff' }
-        ];
+        this.skillModal = null;
 
         // Menu & Pause System
         this.isPaused = false;
@@ -104,10 +95,6 @@ export default class BattleScene extends BaseScene {
         // Roguelite
         this.skillManager = new SkillManager(this);
 
-        // Roguelite Stats
-        this.level = 1;
-        this.exp = 0;
-        this.maxExp = 100;
         this.magnetRange = 150; // Default pickup range
 
         // 阶段性成就提示系统
@@ -158,6 +145,20 @@ export default class BattleScene extends BaseScene {
             '#00ccff',
             36
         );
+        this.spawnFloatingText(
+            '右下摇杆移动',
+            GameConfig.Screen.width / 2,
+            350,
+            '#ffffff',
+            26
+        );
+        this.spawnFloatingText(
+            '点击左下A键释放特技',
+            GameConfig.Screen.width / 2,
+            390,
+            '#ffffff',
+            26
+        );
         
         setTimeout(() => {
             this.spawnFloatingText(
@@ -197,7 +198,11 @@ export default class BattleScene extends BaseScene {
     }
 
     update(dt) {
-        // Pause Check
+        if (this.isSelectingSkill && this.skillModal) {
+            this.skillModal.update(dt);
+            return;
+        }
+
         if (this.isPaused) return;
 
         // 1. Update Background (Scroll)
@@ -222,7 +227,7 @@ export default class BattleScene extends BaseScene {
                 // Let's use a multiplier for now to be safe, or direct if Player.js updated speed to ~400.
                 // Currently BaseFighter has speed=10. Player has this.speed = this.fighter.speed.
                 // Let's multiply by 40 for now to match previous feel.
-                const speed = this.player.speed * 40;
+                const speed = this.player.speed;
                 this.player.x += dir.x * speed * dt;
                 this.player.y += dir.y * speed * dt;
 
@@ -256,10 +261,7 @@ export default class BattleScene extends BaseScene {
             this.lastGold = currentGold;
         }
 
-        // Update Effects
-        if (this.effectManager) {
-            this.effectManager.update(dt);
-        }
+        if (this.gameEnded) return;
 
         // Update Mothership (母舰系统)
         if (this.mothership) {
@@ -268,6 +270,11 @@ export default class BattleScene extends BaseScene {
 
         // Update Wave Manager
         this.waveManager.update(dt);
+
+        if (this.mothership && this.mothership.isAlive && this.waveManager.levelTime >= 90) {
+            this.endGame(true);
+            return;
+        }
 
         // 阶段性成就提示检查
         const currentTime = this.waveManager.levelTime;
@@ -292,7 +299,7 @@ export default class BattleScene extends BaseScene {
                 }
                 // 自动升级技能
                 if (this.skillManager) {
-                    this.showSkillSelection();
+                    this.skillManager.addExp(this.skillManager.expToNext);
                 }
             }
         });
@@ -306,7 +313,7 @@ export default class BattleScene extends BaseScene {
         // Update Bullets
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             let b = this.bullets[i];
-            b.update();
+            b.update(dt);
             if (!b.active) this.bullets.splice(i, 1);
         }
 
@@ -395,7 +402,14 @@ export default class BattleScene extends BaseScene {
         // Let's set a default damage for now, or assume config has it.
 
         const damage = config.damage || 10;
-        const bullet = new Bullet(x, y, angle, speed, damage, true, config);
+        const bounds = {
+            minX: -100,
+            maxX: GameConfig.Screen.width + 100,
+            minY: -100,
+            maxY: (this.sceneManager.game.logicHeight || GameConfig.Screen.height) + 100
+        };
+        const bulletConfig = { ...config, bounds };
+        const bullet = new Bullet(x, y, angle, speed, damage, true, bulletConfig);
         this.bullets.push(bullet);
     }
 
@@ -500,7 +514,9 @@ export default class BattleScene extends BaseScene {
                 victory: victory,
                 score: this.score,
                 gold: totalGold,
-                timeSeconds: Math.floor(this.waveManager.levelTime)
+                timeSeconds: Math.floor(this.waveManager.levelTime),
+                fighterId: this.player ? this.player.fighterId : null,
+                buildSummary: this.skillManager ? this.skillManager.getBuildSummary() : null
             });
         }, 2000);
     }
@@ -509,6 +525,7 @@ export default class BattleScene extends BaseScene {
         // 1. Player Bullets vs Enemies
         this.bullets.forEach(b => {
             if (!b.active) return;
+            if (b.isEnemy) return;
             this.enemies.forEach(e => {
                 if (!e.active) return;
                 const dx = b.x - e.x;
@@ -528,7 +545,11 @@ export default class BattleScene extends BaseScene {
                         this.effectManager.spawnFloatingText('处决!', e.x, e.y - 50, '#ff0000', 30);
                         this.effectManager.hitStop(0.05);
                     } else {
-                        e.takeDamage(b.damage);
+                        if (e.isBoss && typeof e.takeDamage === 'function') {
+                            e.takeDamage(b.damage, { x: b.x - e.x, y: b.y - e.y });
+                        } else {
+                            e.takeDamage(b.damage);
+                        }
                     }
 
                     // Damage Text & Effects
@@ -594,6 +615,42 @@ export default class BattleScene extends BaseScene {
             }
         });
 
+        // Enemy Bullets vs Player / Mothership
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const b = this.bullets[i];
+            if (!b.active || !b.isEnemy) continue;
+
+            if (this.player && this.player.hp > 0) {
+                const dx = b.x - this.player.x;
+                const dy = b.y - this.player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < (b.width + this.player.width) / 2.2) {
+                    b.active = false;
+                    const didHit = typeof this.player.takeDamage === 'function' ? this.player.takeDamage(b.damage) : true;
+                    if (didHit) {
+                        if (this.effectManager) {
+                            this.effectManager.spawnDamageText(this.player.x, this.player.y - 30, `-${b.damage}`, true);
+                            this.effectManager.shake(6, 0.12);
+                        }
+                        if (this.player.hp <= 0) {
+                            this.endGame();
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            if (this.mothership && this.mothership.isAlive) {
+                const dxm = b.x - this.mothership.x;
+                const dym = b.y - this.mothership.y;
+                const distm = Math.sqrt(dxm * dxm + dym * dym);
+                if (distm < (b.width + this.mothership.width) / 2.2) {
+                    b.active = false;
+                    this.mothership.takeDamage(b.damage);
+                }
+            }
+        }
+
         // 2. Supply Crates vs Player
         for (let i = this.supplyCrates.length - 1; i >= 0; i--) {
             let crate = this.supplyCrates[i];
@@ -640,16 +697,18 @@ export default class BattleScene extends BaseScene {
                 if (distance < (e.width + this.player.width) / 2.5) {
                     // Collision!
                     e.takeDamage(1000); // Enemy likely dies crashing into player
-                    this.player.hp -= 20; // Player takes damage
-                    console.log(`Player Hit! HP: ${this.player.hp}`);
+                    const didHit = typeof this.player.takeDamage === 'function' ? this.player.takeDamage(20) : true;
+                    if (didHit) {
+                        console.log(`Player Hit! HP: ${this.player.hp}`);
+                    }
 
                     // Heavy Shake & Flash
-                    if (this.effectManager) {
+                    if (this.effectManager && didHit) {
                         this.effectManager.shake(20, 0.3);
                         this.effectManager.spawnDamageText(this.player.x, this.player.y, "-20", true);
                     }
 
-                    if (this.player.hp <= 0) {
+                    if (didHit && this.player.hp <= 0) {
                         this.endGame();
                     }
                 }
@@ -829,6 +888,16 @@ export default class BattleScene extends BaseScene {
         ctx.shadowBlur = 0;
         ctx.fillText('保护母舰', GameConfig.Screen.width / 2, this.hudY + 60); // Spaced out
 
+        const directorHint = this.waveManager && this.waveManager.getCurrentHint ? this.waveManager.getCurrentHint() : null;
+        if (directorHint) {
+            this.renderDirectorHint(ctx, directorHint, width);
+        }
+
+        const boss = this.enemies.find(en => en && en.active && en.isBoss);
+        if (boss) {
+            this.renderBossUI(ctx, boss, width, height);
+        }
+
         // Render Pause Modal
         if (this.isPaused) {
             this.renderPauseModal(ctx, width, height);
@@ -848,6 +917,9 @@ export default class BattleScene extends BaseScene {
         });
 
         // 技能选择已改为自动模式，不显示弹窗
+        if (this.isSelectingSkill && this.skillModal) {
+            this.skillModal.render(ctx);
+        }
         
         // 恢复画布状态（对应render方法开头的ctx.save）
         ctx.restore();
@@ -859,40 +931,119 @@ export default class BattleScene extends BaseScene {
     showSkillSelection(options) {
         console.log("Scene: Show Skill Selection");
         this.isPaused = true;
+        this.isSelectingSkill = true;
 
-        // 获取玩家已选技能用于显示等级
-        // 简化版：自动随机选择技能，不显示弹窗
         const skillOptions = options || this.skillManager.getSkillOptions();
-        if (skillOptions && skillOptions.length > 0) {
-            // 随机选择一个技能
-            const randomSkill = skillOptions[Math.floor(Math.random() * skillOptions.length)];
-            this.skillManager.applySkill(randomSkill.id);
-            
-            // 显示浮动文字提示
-            if (this.effectManager) {
-                this.effectManager.spawnFloatingText(
-                    `✨ 获得技能: ${randomSkill.name}`,
-                    GameConfig.Screen.width / 2,
-                    150,
-                    '#f39c12',
-                    28
-                );
-            }
-            
-            console.log(`Auto-selected skill: ${randomSkill.name} (${randomSkill.id})`);
-        }
+        const playerSkills = this.skillManager ? this.skillManager.acquiredSkills : [];
+
+        this.skillModal = new SkillSelectionModal(
+            this,
+            skillOptions,
+            (skillId) => this.onSkillSelected(skillId),
+            playerSkills
+        );
     }
 
     /**
      * 兼容旧方法名
      */
     showLevelUp() {
-        this.showSkillSelection();
+        this.showSkillSelection(this.skillManager ? this.skillManager.getSkillOptions() : []);
     }
 
     onSkillSelected(skillId) {
-        // 简化版：此方法不再使用（自动选择）
-        console.log("Skill selected (auto):", skillId);
+        if (this.skillManager) {
+            this.skillManager.applySkill(skillId);
+        }
+
+        this.isSelectingSkill = false;
+        this.isPaused = false;
+        this.skillModal = null;
+    }
+
+    showDirectorHint(hint) {
+        this.spawnFloatingText(
+            hint,
+            GameConfig.Screen.width / 2,
+            240,
+            '#f39c12',
+            34
+        );
+    }
+
+    onBossSpawned(boss) {
+        this.spawnFloatingText('🚨 泰坦战舰来袭！', GameConfig.Screen.width / 2, 240, '#ff3b30', 40);
+        this.spawnFloatingText('优先摧毁机库 → 暴露核心弱点', GameConfig.Screen.width / 2, 290, '#ffffff', 26);
+        this.currentBoss = boss;
+    }
+
+    renderBossUI(ctx, boss, width, height) {
+        const barWidth = 420;
+        const barHeight = 12;
+        const x = (width - barWidth) / 2;
+        const y = this.hudY + 80;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(x - 10, y - 36, barWidth + 20, 70);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 18px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(boss.name || 'BOSS', x, y - 16);
+
+        const hpPercent = boss.maxHp > 0 ? boss.hp / boss.maxHp : 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.fillRect(x, y, barWidth, barHeight);
+        ctx.fillStyle = '#ff3b30';
+        ctx.fillRect(x, y, Math.max(0, Math.min(1, hpPercent)) * barWidth, barHeight);
+
+        if (boss.modules && boss.modules.shield && boss.modules.shield.maxHp) {
+            const sp = Math.max(0, boss.modules.shield.hp) / boss.modules.shield.maxHp;
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fillRect(x, y + barHeight + 6, barWidth, 6);
+            ctx.fillStyle = '#00ccff';
+            ctx.fillRect(x, y + barHeight + 6, Math.max(0, Math.min(1, sp)) * barWidth, 6);
+        }
+
+        let hangars = 0;
+        let turrets = 0;
+        let coreExposed = false;
+        if (boss.modules) {
+            hangars = (boss.modules.hangars || []).filter(m => m.active).length;
+            turrets = (boss.modules.mainTurrets || []).filter(m => m.active).length;
+            coreExposed = !!(boss.modules.core && boss.modules.core.exposed);
+        }
+
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#aaa';
+        ctx.font = '14px Arial';
+        ctx.fillText(`机库:${hangars} 主炮:${turrets} ${coreExposed ? '核心:暴露' : '核心:封闭'}`, x + barWidth, y - 16);
+
+        ctx.restore();
+    }
+
+    renderDirectorHint(ctx, hint, width) {
+        const bannerW = Math.min(520, width - 60);
+        const bannerH = 44;
+        const x = (width - bannerW) / 2;
+        const y = this.hudY + 120;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x, y, bannerW, bannerH);
+
+        ctx.strokeStyle = 'rgba(243,156,18,0.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, bannerW, bannerH);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 18px Arial';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#f39c12';
+        ctx.shadowBlur = 10;
+        ctx.fillText(hint, x + bannerW / 2, y + 28);
+        ctx.restore();
     }
 
     /**
@@ -1018,6 +1169,12 @@ export default class BattleScene extends BaseScene {
     }
 
     handleInput(type, x, y) {
+        if (this.isSelectingSkill && this.skillModal) {
+            if (this.skillModal.handleInput(type, x, y)) {
+                return;
+            }
+        }
+
         // ========== 摇杆区域检测 ==========
         // 检查触摸点是否在摇杆区域内（避免摇杆拖动触发高度变化）
         let isInJoystickArea = false;
@@ -1124,53 +1281,8 @@ export default class BattleScene extends BaseScene {
     }
 
     addExp(amount) {
-        this.exp += amount;
-        if (this.exp >= this.maxExp) {
-            this.levelUp();
-        }
-    }
-
-    levelUp() {
-        this.level++;
-        this.exp -= this.maxExp;
-        this.maxExp = Math.floor(this.maxExp * 1.5);
-
-        console.log(`Level Up! Lv.${this.level}`);
-        
-        // 自动随机选择技能（不显示弹窗）
-        if (this.skills && this.skills.length > 0) {
-            const randomSkill = this.skills[Math.floor(Math.random() * this.skills.length)];
-            
-            // 应用技能效果
-            if (this.player) {
-                switch (randomSkill.id) {
-                    case 'multishot':
-                        this.player.applyBuff('barrage');
-                        break;
-                    case 'speed':
-                        this.player.applyBuff('move_speed');
-                        break;
-                    case 'heal':
-                        this.player.healPercent(0.3);
-                        break;
-                    case 'magnet':
-                        this.magnetRange *= 1.5;
-                        break;
-                }
-            }
-            
-            // 显示获得技能的提示
-            if (this.effectManager) {
-                this.effectManager.spawnFloatingText(
-                    `✨ Lv.${this.level}: ${randomSkill.name}`,
-                    GameConfig.Screen.width / 2,
-                    180,
-                    '#f39c12',
-                    28
-                );
-            }
-            
-            console.log(`Auto-selected skill: ${randomSkill.name}`);
+        if (this.skillManager) {
+            this.skillManager.addExp(amount);
         }
     }
 

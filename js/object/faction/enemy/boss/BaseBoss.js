@@ -92,7 +92,10 @@ export default class BaseBoss extends Enemy {
             exposed: false,
             hp: 4000, // 5000→4000 (-20%)
             maxHp: 4000,
-            damageMultiplier: 3 // 核心暴露时受到3倍伤害
+            damageMultiplier: 3,
+            x: 0,
+            y: -20,
+            radius: 34
         };
     }
 
@@ -527,11 +530,24 @@ export default class BaseBoss extends Enemy {
         
         // 对本体造成伤害
         let actualDamage = amount;
-        if (this.modules.core && this.modules.core.exposed) {
+        if (this.modules.core && this.modules.core.exposed && hitLocation && this.isCoreHit(hitLocation)) {
             actualDamage *= this.modules.core.damageMultiplier;
+            if (this.scene && this.scene.effectManager) {
+                this.scene.effectManager.spawnFloatingText('弱点!', this.x, this.y - 110, '#ff3b30', 24);
+            }
         }
         
         super.takeDamage(actualDamage);
+    }
+
+    isCoreHit(location) {
+        if (!this.modules.core) return false;
+        const coreX = this.modules.core.x || 0;
+        const coreY = this.modules.core.y || 0;
+        const radius = this.modules.core.radius || 30;
+        const dx = location.x - coreX;
+        const dy = location.y - coreY;
+        return Math.sqrt(dx * dx + dy * dy) <= radius;
     }
     
     getModuleAtLocation(location) {

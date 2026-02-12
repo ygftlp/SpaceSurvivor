@@ -24,7 +24,7 @@ export default class Mothership {
         // 跃迁充能系统
         this.jumpCharge = 0;
         this.maxJumpCharge = 100; // 100% = 可以跃迁
-        this.chargeRate = 100 / 180; // 每秒充能0.556%，正好180秒完成（配合剧本）
+        this.chargeRate = 100 / 90;
         this.isJumpReady = false;
 
         // 视觉效果
@@ -1002,7 +1002,7 @@ export default class Mothership {
         if (this.isJumpReady) {
             ctx.shadowBlur = 10;
             ctx.shadowColor = '#00ffff';
-            ctx.fillText('⚡ 跃迁引擎就绪! 点击撤离 ⚡', this.x, jumpY + 11);
+            ctx.fillText('⚡ 跃迁引擎就绪! 即将撤离 ⚡', this.x, jumpY + 11);
             ctx.shadowBlur = 0;
         } else {
             ctx.fillText(`跃迁充能 ${Math.floor(jumpPercent * 100)}%`, this.x, jumpY + 11);

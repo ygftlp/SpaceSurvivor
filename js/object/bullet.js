@@ -86,8 +86,13 @@ export default class Bullet {
         this.x += Math.cos(rad) * this.speed * deltaTime;
         this.y += Math.sin(rad) * this.speed * deltaTime;
 
-        // Deactivate if out of bounds (approximate screen size for now, will refine)
-        if (this.x < -100 || this.x > 820 || this.y < -100 || this.y > 1400) {
+        const bounds = this.config && this.config.bounds ? this.config.bounds : null;
+        const minX = bounds && Number.isFinite(bounds.minX) ? bounds.minX : -100;
+        const maxX = bounds && Number.isFinite(bounds.maxX) ? bounds.maxX : 820;
+        const minY = bounds && Number.isFinite(bounds.minY) ? bounds.minY : -100;
+        const maxY = bounds && Number.isFinite(bounds.maxY) ? bounds.maxY : 1400;
+
+        if (this.x < minX || this.x > maxX || this.y < minY || this.y > maxY) {
             this.active = false;
         }
     }
