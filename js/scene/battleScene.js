@@ -49,6 +49,8 @@ export default class BattleScene extends BaseScene {
         // Stats
         this.score = 0;
         this.goldGained = 0;
+        this.lowHpHintCooldown = 0;
+        this.overheatHintCooldown = 0;
 
         // UI Components
         this.btnPause = null;
@@ -71,6 +73,10 @@ export default class BattleScene extends BaseScene {
         this.touchStartY = 0;
         this.touchStartTime = 0;
         this.isVerticalSwipe = false;
+
+        // 引导提示节流，避免刷屏
+        this.lowHpHintCooldown = 0;
+        this.overheatHintCooldown = 0;
     }
 
     enter() {
@@ -85,6 +91,8 @@ export default class BattleScene extends BaseScene {
         this.obstacles = [];
         this.score = 0;
         this.goldGained = 0;
+        this.lowHpHintCooldown = 0;
+        this.overheatHintCooldown = 0;
 
         // Effects
         this.effectManager = new EffectManager(this);
@@ -168,14 +176,14 @@ export default class BattleScene extends BaseScene {
             36
         );
         this.spawnFloatingText(
-            '右下摇杆移动',
+            '左下摇杆移动',
             GameConfig.Screen.width / 2,
             350,
             '#ffffff',
             26
         );
         this.spawnFloatingText(
-            '点击左下A键释放特技',
+            '点击右下A键释放特技',
             GameConfig.Screen.width / 2,
             390,
             '#ffffff',
@@ -226,6 +234,9 @@ export default class BattleScene extends BaseScene {
         }
 
         if (this.isPaused) return;
+
+        this.lowHpHintCooldown = Math.max(0, this.lowHpHintCooldown - dt);
+        this.overheatHintCooldown = Math.max(0, this.overheatHintCooldown - dt);
 
         // 1. Update Background (Scroll)
         this.bgY = (this.bgY || 0) + 100 * dt;
@@ -341,6 +352,20 @@ export default class BattleScene extends BaseScene {
         if (this.player) {
             const newBullets = this.player.update(dt);
             if (newBullets.length > 0) this.bullets.push(...newBullets);
+
+            const hpRate = this.player.maxHp > 0 ? this.player.hp / this.player.maxHp : 1;
+            if (hpRate < 0.3 && this.lowHpHintCooldown <= 0) {
+                this.lowHpHintCooldown = 6.0;
+                this.spawnFloatingText('⚠ 战机受损严重，优先走位！', GameConfig.Screen.width / 2, 320, '#ff6b6b', 24);
+            }
+
+            const isOverheated = Date.now() < this.player.overheatedUntil;
+            if (isOverheated && this.overheatHintCooldown <= 0) {
+                this.overheatHintCooldown = 2.5;
+                if (this.effectManager) {
+                    this.effectManager.spawnEnergyWarning(this.player.x, this.player.y);
+                }
+            }
         }
 
         // Update Bullets
@@ -909,6 +934,8 @@ export default class BattleScene extends BaseScene {
         ctx.shadowBlur = 0;
         ctx.fillText('保护母舰', GameConfig.Screen.width / 2, this.hudY + 60); // Spaced out
 
+        this.renderTopStatusPanel(ctx, width);
+
         const directorHint = this.waveManager && this.waveManager.getCurrentHint ? this.waveManager.getCurrentHint() : null;
         if (directorHint) {
             this.renderDirectorHint(ctx, directorHint, width);
@@ -1040,6 +1067,64 @@ export default class BattleScene extends BaseScene {
         ctx.fillStyle = '#aaa';
         ctx.font = '14px Arial';
         ctx.fillText(`机库:${hangars} 主炮:${turrets} ${coreExposed ? '核心:暴露' : '核心:封闭'}`, x + barWidth, y - 16);
+
+        ctx.restore();
+    }
+
+    renderTopStatusPanel(ctx, width) {
+        if (!this.player) return;
+
+        const panelY = this.hudY + 76;
+        const panelH = 58;
+        const panelW = Math.min(260, Math.floor(width * 0.36));
+        const leftX = 18;
+
+        const hpRate = this.player.maxHp > 0 ? Math.max(0, Math.min(1, this.player.hp / this.player.maxHp)) : 0;
+        const energyRate = this.player.maxEnergy > 0 ? Math.max(0, Math.min(1, this.player.energy / this.player.maxEnergy)) : 0;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fillRect(leftX, panelY, panelW, panelH);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(leftX, panelY, panelW, panelH);
+
+        const barX = leftX + 12;
+        const barW = panelW - 24;
+
+        // HP
+        ctx.fillStyle = '#ff6b6b';
+        ctx.fillRect(barX, panelY + 12, barW * hpRate, 10);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.strokeRect(barX, panelY + 12, barW, 10);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`HP ${Math.ceil(this.player.hp)}/${this.player.maxHp}`, barX, panelY + 10);
+
+        // ENERGY
+        ctx.fillStyle = '#00ccff';
+        ctx.fillRect(barX, panelY + 34, barW * energyRate, 8);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.strokeRect(barX, panelY + 34, barW, 8);
+        ctx.fillStyle = '#c8d6e5';
+        ctx.fillText(`能量 ${Math.ceil(this.player.energy)}/${this.player.maxEnergy}`, barX, panelY + 56);
+
+        // Act badge (right)
+        const act = this.waveManager && this.waveManager.getCurrentAct ? this.waveManager.getCurrentAct() : 1;
+        const badgeW = 94;
+        const badgeX = width - badgeW - 18;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fillRect(badgeX, panelY, badgeW, panelH);
+        ctx.strokeStyle = 'rgba(0, 210, 211, 0.55)';
+        ctx.strokeRect(badgeX, panelY, badgeW, panelH);
+        ctx.fillStyle = '#00d2d3';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`ACT ${act}`, badgeX + badgeW / 2, panelY + 24);
+        ctx.fillStyle = '#95a5a6';
+        ctx.font = '12px Arial';
+        ctx.fillText('战场阶段', badgeX + badgeW / 2, panelY + 44);
 
         ctx.restore();
     }
