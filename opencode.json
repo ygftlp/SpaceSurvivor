@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "anthropic": {
+      "name": "Awesome API",
+      "models": {
+        "claude-opus-4-6-thinking": {
+          "name": "Claude Opus 4.6 Thinking",
+          "limit": { "context": 1000000, "output": 128000 },
+          "reasoning": true
+        }
+      },
+      "options": {
+        "baseURL": "http://8.130.53.188:3000/v1",
+        "apiKey": "sk-c7xgWOodHDnTjRrYjYDxNF5c7SUUbXyL63pNbbLUJcG9ZIBX"
+      }
+    }
+  }
+}

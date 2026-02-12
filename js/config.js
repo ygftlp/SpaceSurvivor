@@ -23,7 +23,32 @@ export const GameConfig = {
     // UI Safe Area (Adapts to Notch/Capsule)
     SafeArea: {
         top: 20, // Default fallback
-        height: 64 // Capsule height reference
+        height: 64, // Capsule height reference
+        left: 20,
+        right: 0,
+        width: 0
+    },
+
+    // UI Style Constants
+    UI: {
+        Colors: {
+            Primary: '#00d2d3',    // Cyan
+            Secondary: '#5f27cd',  // Purple
+            Accent: '#ff9f43',     // Orange
+            Danger: '#ff6b6b',     // Red
+            Success: '#1dd1a1',    // Green
+            Warning: '#feca57',    // Yellow
+            DarkBg: 'rgba(19, 15, 64, 0.95)', // Deep Blue/Black
+            Glass: 'rgba(255, 255, 255, 0.1)',
+            Text: '#c8d6e5',
+            TextHighlight: '#ffffff'
+        },
+        Fonts: {
+            Title: 'bold 48px Arial',
+            Header: 'bold 32px Arial',
+            Body: '16px Arial',
+            Small: '12px Arial'
+        }
     },
 
     init() {

@@ -122,27 +122,21 @@ export default class Enemy {
 
         ctx.save();
         ctx.translate(this.x, this.y);
-        // Enemy faces DOWN by default (PI/2), so we might need to adjust based on movement angle
+        
+        // 强制重置所有可能污染的状态
+        ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        
+        // Enemy faces DOWN by default (PI/2)
         ctx.rotate(this.rotation);
 
-        // 根据高度层添加视觉效果 - 简化版：只缩放大小，保持完全不透明
-        const altitudeFactor = this.altitude / 1000; // 0.1 - 0.9
-        const scaleByAltitude = 1 - (altitudeFactor * 0.15); // 高空缩小至85%
-        
-        ctx.scale(scaleByAltitude, scaleByAltitude);
-        // 始终保持完全不透明，确保可见
-        ctx.globalAlpha = 1.0;
-
-        // 高空添加阴影效果
-        if (this.altitude > 600) {
-            ctx.shadowColor = 'rgba(100, 100, 255, 0.3)';
-            ctx.shadowBlur = 15;
-        } else if (this.altitude < 300) {
-            // 低空添加地面阴影
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            ctx.shadowBlur = 20;
-            ctx.shadowOffsetY = 10;
-        }
+        // 绘制调试边框（确保敌人可见）
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-this.width/2, -this.height/2, this.width, this.height);
 
         // 1. Procedural Render (Priority)
         if (this.config.genome) {
@@ -209,11 +203,12 @@ export default class Enemy {
         const w = this.width / 2;
         const h = this.height / 2;
 
-        // 添加发光效果让敌人更显眼
+        // 强制发光效果让敌人更显眼
         ctx.shadowColor = color;
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 15;
 
-        ctx.fillStyle = color;
+        // 绘制主体 - 明亮的颜色
+        ctx.fillStyle = color || '#ff3333';
         ctx.beginPath();
         ctx.moveTo(0, h); // Nose (Pointing Down)
         ctx.lineTo(w, -h); // Right Wingtip
@@ -224,19 +219,22 @@ export default class Enemy {
 
         ctx.shadowBlur = 0;
 
-        // Details
-        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        // 内部细节 - 深色
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.beginPath();
         ctx.moveTo(0, h);
         ctx.lineTo(5, -h + 5);
         ctx.lineTo(-5, -h + 5);
         ctx.fill();
 
-        // Cockpit - 更亮更显眼
+        // 驾驶舱 - 白色发光
         ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.arc(0, 0, 4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
     }
 
     renderFighter(ctx, color) {

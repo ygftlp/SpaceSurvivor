@@ -38,10 +38,6 @@ export default class Player {
         this.effectiveStats = {}; // Actual stats used for shooting
         this.refreshStats();
 
-        // ========== 三维高度层系统 (3D Altitude System) - 已移除 ==========
-        // 为了简化操作，移除了手动高度控制，改为自动高度适应
-        this.altitude = 500; // 固定为中空
-
         this.maxEnergy = 100;
         this.energy = 100;
         this.energyRegenRate = 12;
@@ -96,10 +92,7 @@ export default class Player {
         const now = Date.now();
         const dtSeconds = Math.max(0, deltaTime);
         
-        // ========== 高度系统更新 (已移除) ==========
-        // 保持高度固定
-        
-        // 更新实际速度 (无高度惩罚)
+        // 更新实际速度
         const actualSpeed = this.speed;
         
         // ========== 更新战机状态（特技冷却等） ==========

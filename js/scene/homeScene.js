@@ -24,9 +24,10 @@ export default class HomeScene extends BaseScene {
         this.uiComponents = [];
 
         // Profile Button (Aligned with Menu Capsule)
-        const safeTop = GameConfig.SafeArea.top || 20;
-        const safeLeft = (GameConfig.SafeArea.left !== undefined) ? GameConfig.SafeArea.left : 20;
-        const capsuleH = GameConfig.SafeArea.height || 32;
+        const safeArea = GameConfig.SafeArea || { top: 20, left: 20, height: 32 };
+        const safeTop = safeArea.top || 20;
+        const safeLeft = (safeArea.left !== undefined) ? safeArea.left : 20;
+        const capsuleH = safeArea.height || 32;
         // Square or Circle button
         this.btnProfile = { x: safeLeft, y: safeTop, w: capsuleH, h: capsuleH };
 
@@ -61,9 +62,10 @@ export default class HomeScene extends BaseScene {
         this.btnStart.y = this.height - 220;
 
         // Update Profile Button Position Update (in case safe area loaded late)
-        this.btnProfile.y = GameConfig.SafeArea.top;
-        this.btnProfile.w = GameConfig.SafeArea.height;
-        this.btnProfile.h = GameConfig.SafeArea.height;
+        const safeArea = GameConfig.SafeArea || { top: 20, height: 32 };
+        this.btnProfile.y = safeArea.top || 20;
+        this.btnProfile.w = safeArea.height || 32;
+        this.btnProfile.h = safeArea.height || 32;
 
         this.demoPlayer.y = this.height / 2 - 50;
 

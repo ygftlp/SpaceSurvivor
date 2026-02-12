@@ -9,21 +9,22 @@ import TitanBattleship from '../object/faction/enemy/boss/TitanBattleship.js';
 import EnemyDatabase from '../data/enemyDatabase.js';
 
 // 剧本常量定义：[开始时间, 结束时间, 敌人类型, 数量, 间隔秒数, 导演提示]
+// 敌人类型: 'Drone_Small', 'Drone_Scout', 'Drone_Kamikaze', 'Elite_Fighter'
 const WAVE_SCRIPT = [
-    // ========== 第1幕：序章 (0-30秒) ==========
-    [0, 3, 'Drone_Small', 1, 0, '保护母舰90秒！'],      // 序章-0：立即生成1个
-    [5, 15, 'Drone_Small', 2, 5, null],                // 序章-1：2个敌人，间隔5秒
-    [15, 25, 'Drone_Kamikaze', 2, 5, '⚠ 自杀式无人机！'], // 序章-2：2个自杀机
+    // ========== 第1幕：序章 (0-15秒) ==========
+    [0, 3, 'Drone_Small', 1, 0, '保护母舰90秒！'],      // 立即生成1个
+    [5, 15, 'Drone_Small', 2, 5, null],                // 2个敌人，间隔5秒
+    [15, 25, 'Drone_Kamikaze', 2, 5, '⚠ 自杀式无人机！'], 
     
     // ========== 第2幕：高潮 (30-60秒) ==========
-    [30, 35, 'Elite_Fighter', 1, 0, '⚠ 精英出现！'],   // 高潮-1：1个精英
-    [35, 45, 'Drone_Small', 3, 5, '虫潮来袭！'],       // 高潮-2：3个敌人，间隔5秒
-    [45, 55, 'Drone_Kamikaze', 2, 5, null],            // 高潮-3：2个自杀机
+    [30, 35, 'Elite_Fighter', 1, 0, '⚠ 精英出现！'],   
+    [35, 45, 'Drone_Small', 3, 5, '虫潮来袭！'],       
+    [45, 55, 'Drone_Kamikaze', 2, 5, null],            
     
     // ========== 第3幕：终章BOSS (60-90秒) ==========
-    [60, 70, 'Elite_Fighter', 1, 10, '⚠ 精英巡逻！'],  // 终章-1：1个精英
-    [75, 85, 'boss_pre', 1, 0, '⚠ BOSS接近！'],        // 终章-2：BOSS前奏
-    [85, 90, 'BOSS', 1, 0, '🚨 BOSS战开始！']           // 终章-3：BOSS战
+    [60, 70, 'Elite_Fighter', 1, 10, '⚠ 精英巡逻！'],  
+    [75, 85, 'boss_pre', 1, 0, '⚠ BOSS接近！'],        
+    [85, 90, 'BOSS', 1, 0, '🚨 BOSS战开始！']           
 ];
 
 export default class WaveManager {
@@ -58,10 +59,14 @@ export default class WaveManager {
         this.currentHint = null;
         this.hintTimer = 0;
         
-        console.log('=== 导演系统启动 ===');
+        console.log('=== 导演系统启动 (Pacing Optimized) ===');
         console.log('游戏时长: 90秒');
         console.log('剧本条目数:', WAVE_SCRIPT.length);
-        console.log('第一条剧本:', WAVE_SCRIPT[0]);
+        
+        // 游戏开始时清理所有现有敌人，确保干净的开局
+        if (this.game && this.game.enemies) {
+             this.game.enemies = []; 
+        }
     }
 
     update(dt) {
@@ -82,23 +87,16 @@ export default class WaveManager {
             if (this.levelTime >= start && this.levelTime < end) {
                 // 在这个时间段内
                 this.nextSpawnTime -= dt;
+                
                 if (this.nextSpawnTime <= 0) {
                     this.spawnFromScript(type, count, hint);
-                    this.nextSpawnTime = interval;
+                    this.nextSpawnTime = interval; // 使用剧本设定的间隔
                 }
                 break;
             } else if (this.levelTime >= end) {
                 // 进入下一个剧本条目
                 this.currentWaveIndex++;
-                // 更新当前幕数
-                if (this.currentWaveIndex < WAVE_SCRIPT.length) {
-                    const nextEntry = WAVE_SCRIPT[this.currentWaveIndex];
-                    const nextAct = Math.floor(nextEntry[0] / 30) + 1;
-                    if (nextAct !== this.currentAct) {
-                        this.currentAct = nextAct;
-                        console.log(`========== 第${this.currentAct}幕开始 ==========`);
-                    }
-                }
+                this.nextSpawnTime = 0; // 重置计时器，立即触发下一条
             } else {
                 // 还未到这个时间段
                 break;

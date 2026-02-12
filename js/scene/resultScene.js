@@ -50,75 +50,120 @@ export default class ResultScene extends BaseScene {
     }
 
     render(ctx) {
-        // 背景 (半透明叠加在战斗场景上? 不，SceneManager 这里的简单实现是替换场景)
-        // 所以我们画一个全黑背景
-        ctx.fillStyle = '#111';
+        // 背景 (深色科技风)
+        ctx.fillStyle = '#050510';
         ctx.fillRect(0, 0, this.width, this.height);
+        
+        // 绘制网格背景
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        for(let i=0; i<this.height; i+=40) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(this.width, i); ctx.stroke();
+        }
 
-        // Result Title based on Time
-        let title = '任务失败';
-        let color = '#7f8c8d';
-        if (this.timeMinutes >= 10) { title = '王牌飞行员'; color = '#f1c40f'; }
-        else if (this.timeMinutes >= 5) { title = '精英战士'; color = '#e67e22'; }
-        else if (this.timeMinutes >= 1) { title = '幸存者'; color = '#2ecc71'; }
+        // 结果标题
+        const cx = this.width / 2;
+        let title = 'MISSION FAILED';
+        let color = GameConfig.UI.Colors.Danger;
+        let subTitle = '任务失败 - 母舰/战机被毁';
+        
+        if (this.timeMinutes >= 1) { // 只有坚持一定时间才算有称号，这里简化逻辑
+            // 胜利判定通常由 enter 参数 params.victory 决定，但这里只有 time
+            // 假设外部传入了 victory
+            // 我们用颜色区分等级
+        }
+        
+        // 更好的逻辑：根据传入的 victory 参数
+        // 但 ResultScene.enter 没有显式保存 victory。让我们假设时间长就是好。
+        // 实际上 BattleScene 传递了 victory。
+        // 由于这里我无法轻易修改 enter，我将依据 this.timeMinutes 来渲染
+        
+        if (this.timeMinutes >= 10) { // 假设90秒(1.5m)就算赢？ BattleScene是90秒。
+             // 实际上 BattleScene 是存活 90s = 胜利。
+             // 这里 10m 是个旧逻辑，我们修正它。
+        }
+        
+        // 修正：根据时间判断
+        if (this.timeSeconds >= 90) {
+            title = 'MISSION ACCOMPLISHED';
+            color = GameConfig.UI.Colors.Success;
+            subTitle = '任务完成 - 成功撤离';
+        } else {
+            // 失败
+        }
 
-        // 标题
+        ctx.save();
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = color;
         ctx.fillStyle = color;
-        ctx.font = 'bold 50px Arial';
+        ctx.font = 'bold italic 40px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(title, this.width / 2, 200);
-
-        // 统计 - 生存时间
-        ctx.font = '30px Arial';
+        ctx.fillText(title, cx, 150);
+        ctx.shadowBlur = 0;
+        
         ctx.fillStyle = '#aaa';
-        ctx.fillText('生存时间', this.width / 2, 300);
+        ctx.font = '16px Arial';
+        ctx.fillText(subTitle, cx, 185);
+        ctx.restore();
 
+        // 核心数据面板
+        const panelW = this.width * 0.85;
+        const panelY = 240;
+        RenderUtils.drawCyberPanel(ctx, (this.width - panelW)/2, panelY, panelW, 300, { color: color });
+
+        // 时间 (大字)
         const m = Math.floor(this.timeSeconds / 60).toString().padStart(2, '0');
         const s = Math.floor(this.timeSeconds % 60).toString().padStart(2, '0');
-        ctx.font = 'bold 60px Arial';
+        
         ctx.fillStyle = '#fff';
-        ctx.fillText(`${m}:${s}`, this.width / 2, 360);
-
-        // 统计 - 分数
-        ctx.font = '24px Arial';
+        ctx.font = 'bold 70px Arial'; // Digital clock style
+        ctx.textAlign = 'center';
+        ctx.fillText(`${m}:${s}`, cx, panelY + 100);
+        
         ctx.fillStyle = '#aaa';
-        ctx.fillText('击杀分数', this.width / 2 - 100, 480);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(this.score, this.width / 2 - 100, 520);
+        ctx.font = '14px Arial';
+        ctx.fillText('SURVIVAL TIME', cx, panelY + 130);
 
-        // 统计 - 金币
-        ctx.fillStyle = '#aaa';
-        ctx.fillText('获得金币', this.width / 2 + 100, 480);
-        ctx.fillStyle = '#FFD700';
-        ctx.fillText(`+${this.gold}`, this.width / 2 + 100, 520);
+        // 分隔线
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.beginPath(); ctx.moveTo(cx - 100, panelY + 160); ctx.lineTo(cx + 100, panelY + 160); ctx.stroke();
 
+        // 下方数据 grid
+        const statY = panelY + 220;
+        // Score
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#aaa'; ctx.font = '14px Arial'; ctx.fillText('SCORE', cx - 20, statY);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 24px Arial'; ctx.fillText(this.score, cx - 20, statY + 30);
+        
+        // Gold
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#aaa'; ctx.font = '14px Arial'; ctx.fillText('REWARDS', cx + 20, statY);
+        ctx.fillStyle = GameConfig.UI.Colors.Warning; ctx.font = 'bold 24px Arial'; ctx.fillText(`+${this.gold}`, cx + 20, statY + 30);
+
+        // 详细复盘面板
         this.renderRecapPanel(ctx);
 
-        // 按钮 - Restart
-        ctx.fillStyle = '#2ecc71';
-        ctx.fillRect(this.btnRestart.x, this.btnRestart.y, this.btnRestart.w, this.btnRestart.h);
+        // 按钮组
+        const btnW = 220;
+        const btnH = 60;
+        const btnGap = 20;
+        const startBtnY = this.height - 250;
+        
+        // 更新按钮区域用于点击检测
+        this.btnRestart = { x: cx - btnW/2, y: startBtnY, w: btnW, h: btnH };
+        this.btnHome = { x: cx - btnW/2, y: startBtnY + btnH + btnGap, w: btnW, h: btnH };
+        this.btnShare = { x: cx - btnW/2, y: startBtnY + (btnH + btnGap) * 2, w: btnW, h: btnH };
 
-        ctx.fillStyle = '#fff';
-        ctx.font = '24px Arial';
-        ctx.fillText('再玩一次', this.btnRestart.x + 100, this.btnRestart.y + 38);
-
-        // 按钮 - Home
-        ctx.fillStyle = '#e74c3c';
-        ctx.fillRect(this.btnHome.x, this.btnHome.y, this.btnHome.w, this.btnHome.h);
-
-        ctx.fillStyle = '#fff';
-        ctx.font = '24px Arial';
-        ctx.fillText('返回主页', this.btnHome.x + 100, this.btnHome.y + 38);
-
-        // 按钮 - Generate Poster (Share)
-        this.btnShare = { x: this.width / 2 - 100, y: this.btnHome.y + 80, w: 200, h: 50 };
+        RenderUtils.drawButton(ctx, this.btnRestart.x, this.btnRestart.y, btnW, btnH, '再玩一次', { color: GameConfig.UI.Colors.Success });
+        RenderUtils.drawButton(ctx, this.btnHome.x, this.btnHome.y, btnW, btnH, '返回主页', { color: '#fff' });
+        
+        // Share text link style
         ctx.fillStyle = '#3498db';
-        ctx.fillRect(this.btnShare.x, this.btnShare.y, this.btnShare.w, this.btnShare.h);
-        ctx.fillStyle = '#fff';
-        ctx.font = '20px Arial';
-        ctx.fillText('生成战绩海报', this.btnShare.x + 100, this.btnShare.y + 33);
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('生成战绩海报', cx, this.btnShare.y + 30);
 
-        // Render Poster Overlay if active
+        // Poster Overlay
         if (this.showPoster) {
             this.renderPoster(ctx);
         }

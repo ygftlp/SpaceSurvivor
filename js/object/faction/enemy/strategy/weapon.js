@@ -18,6 +18,10 @@ export const WeaponStrategies = {
                 // Fire
                 if (enemy.scene && enemy.scene.spawnEnemyBullet) {
                     const cfg = enemy.config.weaponConfig || {};
+                    // Ensure damage is passed from enemy stats if not in config
+                    if (cfg.damage === undefined && enemy.damage) {
+                        cfg.damage = enemy.damage;
+                    }
                     const speed = cfg.speed || 300;
                     enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
                 }
@@ -82,6 +86,10 @@ export const WeaponStrategies = {
     PROCEDURAL: {
         update: (enemy, dt) => {
             const cfg = enemy.config.weaponConfig || {};
+            // Ensure damage is passed from enemy stats if not in config
+            if (cfg.damage === undefined && enemy.damage) {
+                cfg.damage = enemy.damage;
+            }
             enemy.fireTimer = (enemy.fireTimer || 0) - dt;
             
             if (enemy.fireTimer <= 0) {

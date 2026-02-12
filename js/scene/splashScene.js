@@ -49,39 +49,76 @@ export default class SplashScene extends BaseScene {
     }
 
     render(ctx) {
-        // 背景色 (品牌色)
-        ctx.fillStyle = '#000';
+        // 背景色 (深空)
+        ctx.fillStyle = '#050510';
         ctx.fillRect(0, 0, this.width, this.height);
 
+        const cx = this.width / 2;
+        const cy = this.height / 2;
+
+        // 装饰圆环
+        const time = Date.now() / 1000;
+        ctx.save();
+        ctx.translate(cx, cy - 30);
+        
+        // 旋转外圈
+        ctx.strokeStyle = 'rgba(0, 210, 211, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 120, time, time + Math.PI * 1.5);
+        ctx.stroke();
+        
+        // 反向旋转内圈
+        ctx.strokeStyle = 'rgba(95, 39, 205, 0.3)';
+        ctx.beginPath();
+        ctx.arc(0, 0, 100, -time * 1.5, -time * 1.5 + Math.PI);
+        ctx.stroke();
+        ctx.restore();
+
         // Logo 文字
+        ctx.save();
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#00d2d3';
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 50px Arial';
+        ctx.font = 'bold 60px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('太空', this.width / 2, this.height / 2 - 60);
-        ctx.fillStyle = '#00A8FF';
-        ctx.fillText('幸存者', this.width / 2, this.height / 2);
+        ctx.fillText('SPACE', cx, cy - 40);
+        
+        ctx.shadowColor = '#5f27cd';
+        ctx.fillStyle = '#00d2d3';
+        ctx.font = 'bold 40px Arial';
+        ctx.fillText('SURVIVOR', cx, cy + 10);
+        ctx.restore();
 
         // 进度条背景
-        const barW = 400;
-        const barH = 10;
+        const barW = this.width * 0.7;
+        const barH = 6;
         const barX = (this.width - barW) / 2;
-        const barY = this.height / 2 + 100;
+        const barY = cy + 150;
 
-        ctx.fillStyle = '#333';
+        // 进度条发光槽
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
         ctx.fillRect(barX, barY, barW, barH);
-
-        // 进度条前景
-        ctx.fillStyle = '#00A8FF';
+        
+        // 进度条前景 (渐变)
+        const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+        grad.addColorStop(0, '#00d2d3');
+        grad.addColorStop(1, '#5f27cd');
+        ctx.fillStyle = grad;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00d2d3';
         ctx.fillRect(barX, barY, barW * (this.progress / 100), barH);
+        ctx.shadowBlur = 0;
 
         // Loading 文字
-        ctx.fillStyle = '#666';
-        ctx.font = '16px Arial';
-        ctx.fillText(`加载中... ${this.progress}%`, this.width / 2, barY + 40);
+        ctx.fillStyle = '#rgba(255,255,255,0.5)';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`SYSTEM INITIALIZING... ${this.progress}%`, cx, barY + 30);
 
         // 版权信息
-        ctx.fillStyle = '#444';
+        ctx.fillStyle = '#333';
         ctx.font = '12px Arial';
-        ctx.fillText('© 2026 yangguangftlp', this.width / 2, this.height - 50);
+        ctx.fillText('VER 1.0.0 | POWERED BY OPENCODE', cx, this.height - 40);
     }
 }

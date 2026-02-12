@@ -92,6 +92,27 @@ export default class BattleScene extends BaseScene {
         // Mothership - 母舰保护系统（核心叙事锚点）
         this.mothership = new Mothership(this);
 
+        // 修复：黑匣子位置防重叠检查
+        if (this.wreckage) {
+            const dx = this.wreckage.x - this.mothership.x;
+            const dy = this.wreckage.y - this.mothership.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            // 如果黑匣子距离母舰太近（小于350像素），强制将其移开
+            if (dist < 350) {
+                console.log('调整黑匣子位置以避免与母舰重叠');
+                // 强制移动到屏幕上半部分的两侧
+                this.wreckage.y = 200 + Math.random() * 100; // 屏幕上方 200-300px 处
+                
+                // 随机放左边或右边，避开中轴线
+                if (Math.random() > 0.5) {
+                    this.wreckage.x = 50 + Math.random() * 100; // 左侧
+                } else {
+                    this.wreckage.x = GameConfig.Screen.width - 150 + Math.random() * 100; // 右侧
+                }
+                console.log(`黑匣子新位置: ${this.wreckage.x}, ${this.wreckage.y}`);
+            }
+        }
+
         // Roguelite
         this.skillManager = new SkillManager(this);
 
@@ -102,9 +123,10 @@ export default class BattleScene extends BaseScene {
         this.achievedMilestones = [];
 
         // 1. Init Pause Button (Top-Left)
-        const safeTop = GameConfig.SafeArea.top || 20;
-        const safeLeft = GameConfig.SafeArea.left || 20;
-        const capsuleH = GameConfig.SafeArea.height || 32;
+        const safeArea = GameConfig.SafeArea || { top: 20, left: 20, height: 32 };
+        const safeTop = safeArea.top || 20;
+        const safeLeft = (safeArea.left !== undefined) ? safeArea.left : 20;
+        const capsuleH = safeArea.height || 32;
 
         this.btnPause = new Button(safeLeft, safeTop, capsuleH, capsuleH, '||');
         this.btnPause.setStyle('rgba(0,0,0,0.5)', '#fff', 20, 10);
@@ -112,13 +134,13 @@ export default class BattleScene extends BaseScene {
             this.togglePause();
         });
 
-        // 2. Init Joystick (Fixed Position - Right Side, Larger)
+        // 2. Init Joystick (Dynamic - Left Side)
         const logicH = this.sceneManager.game.logicHeight;
         this.joystick = new Joystick(
-            GameConfig.Screen.width - 120, // X: Right side
-            logicH - 120,                  // Y: Bottom
-            80,                            // Radius: Larger (was 60)
-            false                          // Floating: False (Fixed)
+            150,                           // X: Left side base position
+            logicH - 150,                  // Y: Bottom
+            80,                            // Radius
+            true                           // Floating: True (Dynamic)
         );
 
         // Joystick first (Background), Pause second (Foreground)
@@ -266,6 +288,17 @@ export default class BattleScene extends BaseScene {
         // Update Mothership (母舰系统)
         if (this.mothership) {
             this.mothership.update(dt);
+            
+            // Low HP Warning
+            if (this.mothership.isAlive && this.mothership.hp / this.mothership.maxHp < 0.3) {
+                if (!this.mothershipLowHpTimer) this.mothershipLowHpTimer = 0;
+                this.mothershipLowHpTimer += dt;
+                if (this.mothershipLowHpTimer > 2.0) {
+                    this.mothershipLowHpTimer = 0;
+                    this.spawnFloatingText('⚠ 母舰护盾紧急!', this.mothership.x, this.mothership.y - 120, '#ff0000', 36);
+                    if (this.effectManager) this.effectManager.shake(5, 0.5);
+                }
+            }
         }
 
         // Update Wave Manager
@@ -532,9 +565,7 @@ export default class BattleScene extends BaseScene {
                 const dy = b.y - e.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
-                // ========== 高度层判定 (已移除) ==========
-                // 默认全部命中
-                
+                // Collision Detection
                 if (distance < (b.width + e.width) / 2) {
                     b.active = false;
                     
@@ -683,16 +714,6 @@ export default class BattleScene extends BaseScene {
                 const dy = e.y - this.player.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
-                // ========== 高度层判定 ==========
-                const enemyAltitude = e.altitude !== undefined ? e.altitude : 500;
-                const playerAltitude = this.player.altitude;
-                const altitudeDiff = Math.abs(enemyAltitude - playerAltitude);
-                
-                // 高度差超过150米不会碰撞（即使平面距离很近）
-                if (altitudeDiff > 150) {
-                    return;
-                }
-                
                 // Simple circle collision (approx)
                 if (distance < (e.width + this.player.width) / 2.5) {
                     // Collision!
@@ -826,7 +847,7 @@ export default class BattleScene extends BaseScene {
         this.loots.forEach(o => o.render(ctx));
         this.obstacles.forEach(o => o.render(ctx));
         this.supplyCrates.forEach(o => o.render(ctx));
-        this.enemies.forEach(o => o.render(ctx)); // Keep enemies rendering here
+        this.enemies.forEach(o => o.render(ctx));
         this.bullets.forEach(o => o.render(ctx));
         if (this.player) this.player.render(ctx);
         
@@ -1117,54 +1138,87 @@ export default class BattleScene extends BaseScene {
 
 
     renderPauseModal(ctx, w, h) {
-        // 美术设计：深色半透明遮罩
-        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        // 半透明黑色遮罩
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
         ctx.fillRect(0, 0, w, h);
 
-        // 卡片式弹框 - 更现代的设计
-        const cardWidth = 300;
-        const cardHeight = 500;  // 高度500px，足够容纳所有按钮
         const cx = w / 2;
         const cy = h / 2;
-        const mx = cx - cardWidth / 2;
-        const my = cy - cardHeight / 2;
+        const panelW = 320;
+        const panelH = 400; // 紧凑型面板
+        const startX = cx - panelW / 2;
+        const startY = cy - panelH / 2;
 
-        // 绘制卡片背景 - 使用兼容的 RenderUtils
-        RenderUtils.fillRoundRect(ctx, mx, my, cardWidth, cardHeight, 20, 'rgba(30, 30, 40, 0.95)');
-        
-        // 绘制发光边框
-        ctx.save();
-        ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
-        ctx.lineWidth = 2;
-        RenderUtils.roundRectPath(ctx, mx, my, cardWidth, cardHeight, 20);
-        ctx.stroke();
-        ctx.restore();
+        // 1. 绘制赛博风格面板背景
+        RenderUtils.drawCyberPanel(ctx, startX, startY, panelW, panelH, {
+            corner: 20,
+            color: '#00d2d3', // 青色霓虹
+            bgAlpha: 0.95
+        });
 
-        // 标题 - 使用渐变效果（在500px高度的弹框中居中顶部）
+        // 2. 标题区域
         ctx.save();
-        const titleGradient = ctx.createLinearGradient(cx - 60, my + 40, cx + 60, my + 40);
-        titleGradient.addColorStop(0, '#00d4ff');
-        titleGradient.addColorStop(1, '#00ff88');
-        ctx.fillStyle = titleGradient;
-        ctx.font = 'bold 28px Arial';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillText('游戏暂停', cx, my + 60);
         
-        // 分隔线
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(mx + 40, my + 85);
-        ctx.lineTo(mx + cardWidth - 40, my + 85);
-        ctx.stroke();
+        // 标题光效
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#00d2d3';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 32px Arial';
+        ctx.fillText('系统暂停', cx, startY + 60);
+        
+        // 副标题/装饰线
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#00d2d3';
+        ctx.fillRect(cx - 80, startY + 80, 160, 2);
         ctx.restore();
 
-        // 渲染暂停菜单按钮
+        // 3. 按钮布局 (依赖 uiComponents 中的按钮对象进行渲染，这里只负责背景布局提示)
+        // 注意：实际按钮是在 togglePause() 中创建并添加到 uiComponents 的
+        // 我们需要确保 togglePause 中创建的按钮位置与这个面板对齐
+        
+        // 渲染装饰性文字
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '12px Arial';
+        ctx.fillText('SYSTEM PAUSED', cx, startY + panelH - 20);
+        ctx.restore();
+        
+        // 渲染UI组件（按钮）
+        // 按钮已经在 render() 主循环的 uiComponents.forEach 中渲染了
+        // 这里不需要重复调用 button.render()，除非我们想覆盖层级
+        // 但通常 BaseScene 的 render 会处理所有 uiComponents
+        
+        // 特殊处理：由于 uiComponents 在 render() 中是在 renderPauseModal 之前还是之后绘制？
+        // 查看 render(): 
+        // -> renderBackground
+        // -> renderEntities
+        // -> uiComponents.forEach (Joystick, PauseBtn) -> 这里只渲染了常驻UI
+        // -> renderPauseModal -> 这里渲染遮罩和面板
+        // 等等！如果按钮在 uiComponents 里，它们会被 render() 里的循环绘制。
+        // 但是 renderPauseModal 是在 render() 的最后调用的（第 903 行）。
+        // 这意味着遮罩会盖住 uiComponents 里的按钮！
+        
+        // 修正逻辑：
+        // 暂停菜单的按钮应该在 renderPauseModal 内部手动渲染，或者
+        // 在 togglePause 中将它们加入 uiComponents，并确保 renderPauseModal 在 uiComponents *之前* 渲染背景？
+        // 不，通常模态框是：背景遮罩 -> 面板 -> 按钮。
+        
+        // 当前代码结构：
+        // 1. render() 绘制场景
+        // 2. render() 绘制 uiComponents (Joystick, PauseBtn)
+        // 3. render() 检查 isPaused -> 调用 renderPauseModal
+        
+        // 所以 renderPauseModal 需要负责绘制它自己的按钮，
+        // 或者我们需要改变渲染顺序。
+        // 最简单的修复：renderPauseModal 负责绘制具体的暂停菜单按钮。
+        
         if (this.btnContinue) this.btnContinue.render(ctx);
         if (this.btnShare) this.btnShare.render(ctx);
         if (this.btnSetting) this.btnSetting.render(ctx);
         if (this.btnEnd) this.btnEnd.render(ctx);
+        // Close 按钮通常在右上角
         if (this.btnClose) this.btnClose.render(ctx);
     }
 
@@ -1191,6 +1245,15 @@ export default class BattleScene extends BaseScene {
         // 高度层滑动控制 (已移除)
         // if (!isInJoystickArea) { ... }
 
+        if (this.isPaused) {
+            // 如果暂停，优先处理暂停菜单的按钮点击
+            const pauseButtons = [this.btnContinue, this.btnShare, this.btnSetting, this.btnEnd, this.btnClose];
+            for (let btn of pauseButtons) {
+                if (btn && btn.handleInput(type, x, y)) return;
+            }
+            return; // 暂停时阻止其他输入
+        }
+
         // Priority 1: UI Components (Pause, Joystick, etc)
         // We iterate generic UI components mainly for clicks
         if (type === 'touchstart') {
@@ -1216,9 +1279,18 @@ export default class BattleScene extends BaseScene {
         }
 
         // Priority 2: Direct Joystick Input (Move/End)
-        // Since Joystick is in uiComponents, but we need to ensure it gets drag events
+        // Restrict to Left Side of screen for touch start to avoid conflict with buttons on right
         if (this.joystick) {
-            this.joystick.handleInput(type, x, y);
+            // If it's a new touch, ensure it's on the left half
+            if (type === 'touchstart') {
+                if (x < GameConfig.Screen.width / 2) {
+                    this.joystick.handleInput(type, x, y);
+                }
+            } else {
+                // Move/End events don't strictly need position checks if already active, 
+                // but joystick.handleInput handles state.
+                this.joystick.handleInput(type, x, y);
+            }
         }
 
         // Game Input
@@ -1231,47 +1303,49 @@ export default class BattleScene extends BaseScene {
         const height = this.sceneManager.game.logicHeight;
 
         if (this.isPaused) {
-            // 美术设计：使用卡片式布局，更现代、更简洁
+            // 面板参数
+            const panelW = 320;
+            const panelH = 400;
             const cx = width / 2;
             const cy = height / 2;
+            const startY = cy - panelH / 2;
+
+            // 按钮样式
             const btnWidth = 240;
-            const btnHeight = 50;  // 增加按钮高度到50px
-            const btnSpacing = 20; // 增加间距
-            const startY = cy - 180; // 起始位置
-            
-            // 主按钮（继续游戏）- 大而突出
-            this.btnContinue = new Button(cx - btnWidth/2, startY, btnWidth, btnHeight, '▶ 继续游戏');
-            this.btnContinue.setStyle('#00b894', '#fff', 22, 25).setCallback(() => this.togglePause());
-            
-            // 分享按钮 - 第二行
-            this.btnShare = new Button(cx - btnWidth/2, startY + btnHeight + btnSpacing, btnWidth, btnHeight, '分享');
-            this.btnShare.setStyle('#0984e3', '#fff', 20, 20).setCallback(() => {
-                wx.shareAppMessage({ title: `我在太空幸存者中得了${this.score}分！` });
-            });
-            
-            // 设置按钮 - 第三行
-            this.btnSetting = new Button(cx - btnWidth/2, startY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '设置');
-            this.btnSetting.setStyle('#636e72', '#fff', 20, 20).setCallback(() => {
-                console.log('设置功能待实现');
+            const btnHeight = 44;
+            const btnSpacing = 16;
+            const firstBtnY = startY + 110; // 标题下方
+
+            // 1. 继续游戏
+            this.btnContinue = new Button(cx - btnWidth/2, firstBtnY, btnWidth, btnHeight, '▶ 继续作战');
+            this.btnContinue.setStyle('#00b894', '#000', 18, 5).setCallback(() => this.togglePause());
+
+            // 2. 分享战绩
+            this.btnShare = new Button(cx - btnWidth/2, firstBtnY + btnHeight + btnSpacing, btnWidth, btnHeight, '分享战报');
+            this.btnShare.setStyle('#0984e3', '#fff', 18, 5).setCallback(() => {
+                wx.shareAppMessage({ title: `我在太空幸存者中守卫了${Math.floor(this.waveManager.levelTime)}秒！` });
             });
 
-            // 结束游戏 - 第四行
-            this.btnEnd = new Button(cx - 80, startY + (btnHeight + btnSpacing) * 3, 160, 44, '结束游戏');
-            this.btnEnd.setStyle('rgba(255, 107, 107, 0.2)', '#ff6b6b', 18, 22).setCallback(() => {
+            // 3. 系统设置
+            this.btnSetting = new Button(cx - btnWidth/2, firstBtnY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '系统设置');
+            this.btnSetting.setStyle('#636e72', '#fff', 18, 5).setCallback(() => {
+                // TODO: Settings
+            });
+
+            // 4. 放弃任务 (红色警告色)
+            this.btnEnd = new Button(cx - btnWidth/2, firstBtnY + (btnHeight + btnSpacing) * 3 + 10, btnWidth, btnHeight, '放弃任务');
+            this.btnEnd.setStyle('#d63031', '#fff', 18, 5).setCallback(() => {
                 this.endGame();
             });
 
-            // 关闭按钮 - 右上角 (调整位置，确保在卡片内)
-            this.btnClose = new Button(cx + 110, cy - 220, 40, 40, '✕');
-            this.btnClose.setStyle('rgba(255,255,255,0.15)', '#fff', 20, 20).setCallback(() => this.togglePause());
+            // Close 按钮 (为了兼容性，也可以保留)
+            this.btnClose = null; 
 
-            this.uiComponents.push(this.btnContinue, this.btnShare, this.btnSetting, this.btnEnd, this.btnClose);
-
+            // 注意：我们不把这些按钮加到 this.uiComponents，
+            // 而是由 renderPauseModal 专门渲染和处理 input
+            // 这样可以避免层级问题
+            
         } else {
-            // Remove Pause Menu Buttons
-            // Keep btnPause and joystick (Removed altitude buttons)
-            // Ensure btnPause is last (topmost) to receive input first
-            this.uiComponents = [this.joystick, this.btnPause];
             this.btnContinue = null;
             this.btnEnd = null;
             this.btnShare = null;

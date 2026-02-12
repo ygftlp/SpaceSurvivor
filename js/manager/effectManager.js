@@ -346,6 +346,23 @@ export default class EffectManager {
         });
     }
 
+    spawnShockwave(x, y, color = '#ffffff', maxSize = 50) {
+        this.particles.push({
+            x: x,
+            y: y,
+            vx: 0,
+            vy: 0,
+            vr: 0,
+            life: 0.5,
+            maxLife: 0.5,
+            size: 1,
+            color: color,
+            rotation: 0,
+            type: 'shockwave',
+            maxSize: maxSize
+        });
+    }
+
     spawnLevelUpAura(x, y) {
         // Bright flash
         this.particles.push({

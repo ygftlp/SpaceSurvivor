@@ -145,23 +145,32 @@ export default class SkillSelectionModal {
     render(ctx) {
         if (!this.active) return;
 
-        // 深色背景遮罩
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        // 深色背景遮罩 (模糊感)
+        ctx.fillStyle = 'rgba(10, 15, 30, 0.95)';
         ctx.fillRect(0, 0, this.width, this.height);
 
+        // 顶部光晕
+        const cx = this.width / 2;
+        const grad = ctx.createRadialGradient(cx, 0, 10, cx, 0, 400);
+        grad.addColorStop(0, 'rgba(0, 210, 211, 0.2)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, this.width, 300);
+
         // 标题
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 42px Arial';
-        ctx.textAlign = 'center';
+        ctx.save();
         ctx.shadowBlur = 20;
-        ctx.shadowColor = '#00ccff';
-        ctx.fillText('✦ 升级奖励 ✦', this.width / 2, 120);
+        ctx.shadowColor = '#00d2d3';
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('SYSTEM UPGRADE', cx, 100);
         ctx.shadowBlur = 0;
         
-        // 副标题
-        ctx.fillStyle = '#aaa';
-        ctx.font = '20px Arial';
-        ctx.fillText('选择一项强化你的战机', this.width / 2, 155);
+        ctx.fillStyle = '#7f8c8d';
+        ctx.font = '16px Arial';
+        ctx.fillText('SELECT MODIFICATION MODULE', cx, 130);
+        ctx.restore();
 
         // 绘制3张技能卡
         this.cards.forEach((card, index) => {
@@ -169,9 +178,12 @@ export default class SkillSelectionModal {
         });
         
         // 底部提示
-        ctx.fillStyle = '#666';
-        ctx.font = '16px Arial';
-        ctx.fillText('点击卡片选择技能', this.width / 2, this.height - 50);
+        // 呼吸效果
+        const alpha = 0.5 + Math.sin(this.animationTime * 3) * 0.3;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('TAP TO INSTALL', cx, this.height - 80);
     }
 
     renderSkillCard(ctx, card, index) {
