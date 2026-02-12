@@ -1223,87 +1223,61 @@ export default class BattleScene extends BaseScene {
 
 
     renderPauseModal(ctx, w, h) {
-        // 半透明黑色遮罩
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
         ctx.fillRect(0, 0, w, h);
 
         const cx = w / 2;
         const cy = h / 2;
-        const panelW = 320;
-        const panelH = 400; // 紧凑型面板
+        const panelW = Math.min(380, w - 64);
+        const panelH = Math.min(470, h - 140);
         const startX = cx - panelW / 2;
         const startY = cy - panelH / 2;
 
-        // 1. 绘制赛博风格面板背景
         RenderUtils.drawCyberPanel(ctx, startX, startY, panelW, panelH, {
             corner: 20,
-            color: '#00d2d3', // 青色霓虹
+            color: '#00d2d3',
             bgAlpha: 0.95
         });
 
-        // 2. 标题区域
         ctx.save();
         ctx.textAlign = 'center';
-        
-        // 标题光效
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 14;
         ctx.shadowColor = '#00d2d3';
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 32px Arial';
-        ctx.fillText('系统暂停', cx, startY + 60);
-        
-        // 副标题/装饰线
+        ctx.font = 'bold 30px Arial';
+        ctx.fillText('战术暂停', cx, startY + 56);
+
         ctx.shadowBlur = 0;
-        ctx.fillStyle = '#00d2d3';
-        ctx.fillRect(cx - 80, startY + 80, 160, 2);
+        ctx.fillStyle = '#9fb3c8';
+        ctx.font = '14px Arial';
+        ctx.fillText('TACTICAL PAUSE', cx, startY + 82);
+
+        // 状态摘要（让玩家暂停时快速决策）
+        const elapsed = Math.floor(this.waveManager ? this.waveManager.levelTime : 0);
+        const score = Math.floor(this.score || 0);
+        const hp = this.player ? `${Math.max(0, Math.ceil(this.player.hp))}/${this.player.maxHp}` : '--';
+        const lineY = startY + 116;
+
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.fillRect(startX + 28, lineY, panelW - 56, 1);
+
+        ctx.fillStyle = '#dfe6e9';
+        ctx.font = '13px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`生存时间: ${elapsed}s`, startX + 34, lineY + 24);
+        ctx.fillText(`当前得分: ${score}`, startX + 34, lineY + 46);
+        ctx.fillText(`战机耐久: ${hp}`, startX + 34, lineY + 68);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = '12px Arial';
+        ctx.fillText('建议：耐久低时优先“继续作战”进行走位回血/规避', cx, startY + panelH - 20);
         ctx.restore();
 
-        // 3. 按钮布局 (依赖 uiComponents 中的按钮对象进行渲染，这里只负责背景布局提示)
-        // 注意：实际按钮是在 togglePause() 中创建并添加到 uiComponents 的
-        // 我们需要确保 togglePause 中创建的按钮位置与这个面板对齐
-        
-        // 渲染装饰性文字
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.font = '12px Arial';
-        ctx.fillText('SYSTEM PAUSED', cx, startY + panelH - 20);
-        ctx.restore();
-        
-        // 渲染UI组件（按钮）
-        // 按钮已经在 render() 主循环的 uiComponents.forEach 中渲染了
-        // 这里不需要重复调用 button.render()，除非我们想覆盖层级
-        // 但通常 BaseScene 的 render 会处理所有 uiComponents
-        
-        // 特殊处理：由于 uiComponents 在 render() 中是在 renderPauseModal 之前还是之后绘制？
-        // 查看 render(): 
-        // -> renderBackground
-        // -> renderEntities
-        // -> uiComponents.forEach (Joystick, PauseBtn) -> 这里只渲染了常驻UI
-        // -> renderPauseModal -> 这里渲染遮罩和面板
-        // 等等！如果按钮在 uiComponents 里，它们会被 render() 里的循环绘制。
-        // 但是 renderPauseModal 是在 render() 的最后调用的（第 903 行）。
-        // 这意味着遮罩会盖住 uiComponents 里的按钮！
-        
-        // 修正逻辑：
-        // 暂停菜单的按钮应该在 renderPauseModal 内部手动渲染，或者
-        // 在 togglePause 中将它们加入 uiComponents，并确保 renderPauseModal 在 uiComponents *之前* 渲染背景？
-        // 不，通常模态框是：背景遮罩 -> 面板 -> 按钮。
-        
-        // 当前代码结构：
-        // 1. render() 绘制场景
-        // 2. render() 绘制 uiComponents (Joystick, PauseBtn)
-        // 3. render() 检查 isPaused -> 调用 renderPauseModal
-        
-        // 所以 renderPauseModal 需要负责绘制它自己的按钮，
-        // 或者我们需要改变渲染顺序。
-        // 最简单的修复：renderPauseModal 负责绘制具体的暂停菜单按钮。
-        
         if (this.btnContinue) this.btnContinue.render(ctx);
         if (this.btnShare) this.btnShare.render(ctx);
         if (this.btnSetting) this.btnSetting.render(ctx);
         if (this.btnEnd) this.btnEnd.render(ctx);
-        // Close 按钮通常在右上角
         if (this.btnClose) this.btnClose.render(ctx);
     }
 
@@ -1388,48 +1362,40 @@ export default class BattleScene extends BaseScene {
         const height = this.sceneManager.game.logicHeight;
 
         if (this.isPaused) {
-            // 面板参数
-            const panelW = 320;
-            const panelH = 400;
+            const panelW = Math.min(380, width - 64);
+            const panelH = Math.min(470, height - 140);
             const cx = width / 2;
-            const cy = height / 2;
-            const startY = cy - panelH / 2;
+            const startY = (height - panelH) / 2;
 
-            // 按钮样式
-            const btnWidth = 240;
-            const btnHeight = 44;
-            const btnSpacing = 16;
-            const firstBtnY = startY + 110; // 标题下方
+            const btnWidth = Math.min(260, panelW - 60);
+            const btnHeight = 46;
+            const btnSpacing = 14;
+            const firstBtnY = startY + 210;
+            const btnX = cx - btnWidth / 2;
 
-            // 1. 继续游戏
-            this.btnContinue = new Button(cx - btnWidth/2, firstBtnY, btnWidth, btnHeight, '▶ 继续作战');
-            this.btnContinue.setStyle('#00b894', '#000', 18, 5).setCallback(() => this.togglePause());
+            this.btnContinue = new Button(btnX, firstBtnY, btnWidth, btnHeight, '▶ 继续作战');
+            this.btnContinue.setStyle('#00b894', '#021b16', 18, 6).setCallback(() => this.togglePause());
 
-            // 2. 分享战绩
-            this.btnShare = new Button(cx - btnWidth/2, firstBtnY + btnHeight + btnSpacing, btnWidth, btnHeight, '分享战报');
-            this.btnShare.setStyle('#0984e3', '#fff', 18, 5).setCallback(() => {
-                wx.shareAppMessage({ title: `我在太空幸存者中守卫了${Math.floor(this.waveManager.levelTime)}秒！` });
+            this.btnShare = new Button(btnX, firstBtnY + (btnHeight + btnSpacing), btnWidth, btnHeight, '分享战报');
+            this.btnShare.setStyle('#0984e3', '#fff', 18, 6).setCallback(() => {
+                if (typeof wx !== 'undefined' && wx.shareAppMessage) {
+                    wx.shareAppMessage({ title: `我在太空幸存者中守卫了${Math.floor(this.waveManager.levelTime)}秒！` });
+                } else {
+                    this.spawnFloatingText('当前平台暂不支持分享', GameConfig.Screen.width / 2, 220, '#feca57', 24);
+                }
             });
 
-            // 3. 系统设置
-            this.btnSetting = new Button(cx - btnWidth/2, firstBtnY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '系统设置');
-            this.btnSetting.setStyle('#636e72', '#fff', 18, 5).setCallback(() => {
-                // TODO: Settings
+            this.btnSetting = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '系统设置');
+            this.btnSetting.setStyle('#636e72', '#fff', 18, 6).setCallback(() => {
+                this.spawnFloatingText('设置功能开发中', GameConfig.Screen.width / 2, 220, '#74b9ff', 24);
             });
 
-            // 4. 放弃任务 (红色警告色)
-            this.btnEnd = new Button(cx - btnWidth/2, firstBtnY + (btnHeight + btnSpacing) * 3 + 10, btnWidth, btnHeight, '放弃任务');
-            this.btnEnd.setStyle('#d63031', '#fff', 18, 5).setCallback(() => {
+            this.btnEnd = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 3 + 8, btnWidth, btnHeight, '放弃任务');
+            this.btnEnd.setStyle('#d63031', '#fff', 18, 6).setCallback(() => {
                 this.endGame();
             });
 
-            // Close 按钮 (为了兼容性，也可以保留)
-            this.btnClose = null; 
-
-            // 注意：我们不把这些按钮加到 this.uiComponents，
-            // 而是由 renderPauseModal 专门渲染和处理 input
-            // 这样可以避免层级问题
-            
+            this.btnClose = null;
         } else {
             this.btnContinue = null;
             this.btnEnd = null;
