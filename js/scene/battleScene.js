@@ -1231,47 +1231,64 @@ export default class BattleScene extends BaseScene {
         const panelW = Math.min(380, w - 64);
         const panelH = Math.min(470, h - 140);
         const startX = cx - panelW / 2;
-        const startY = cy - panelH / 2;
+        const startY = (h - panelH) / 2;
 
         RenderUtils.drawCyberPanel(ctx, startX, startY, panelW, panelH, {
-            corner: 20,
+            corner: 24,
             color: '#00d2d3',
-            bgAlpha: 0.95
+            bgAlpha: 0.96
         });
 
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.shadowBlur = 14;
-        ctx.shadowColor = '#00d2d3';
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 30px Arial';
-        ctx.fillText('战术暂停', cx, startY + 56);
-
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#9fb3c8';
-        ctx.font = '14px Arial';
-        ctx.fillText('TACTICAL PAUSE', cx, startY + 82);
-
-        // 状态摘要（让玩家暂停时快速决策）
         const elapsed = Math.floor(this.waveManager ? this.waveManager.levelTime : 0);
         const score = Math.floor(this.score || 0);
         const hp = this.player ? `${Math.max(0, Math.ceil(this.player.hp))}/${this.player.maxHp}` : '--';
-        const lineY = startY + 116;
 
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.fillRect(startX + 28, lineY, panelW - 56, 1);
-
-        ctx.fillStyle = '#dfe6e9';
-        ctx.font = '13px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`生存时间: ${elapsed}s`, startX + 34, lineY + 24);
-        ctx.fillText(`当前得分: ${score}`, startX + 34, lineY + 46);
-        ctx.fillText(`战机耐久: ${hp}`, startX + 34, lineY + 68);
-
+        ctx.save();
         ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.font = '12px Arial';
-        ctx.fillText('建议：耐久低时优先“继续作战”进行走位回血/规避', cx, startY + panelH - 20);
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = '#00d2d3';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 34px Arial';
+        ctx.fillText('战术暂停', cx, startY + 68);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#96a8be';
+        ctx.font = '16px Arial';
+        ctx.fillText('TACTICAL PAUSE', cx, startY + 98);
+
+        // 统计区标题
+        ctx.fillStyle = '#dfe6e9';
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText('战场状态', cx, startY + 136);
+
+        // 三个信息卡片，视觉更松弛
+        const cards = [
+            { title: '生存时间', value: `${elapsed}s`, color: '#74b9ff' },
+            { title: '当前得分', value: `${score}`, color: '#55efc4' },
+            { title: '战机耐久', value: `${hp}`, color: '#ff7675' }
+        ];
+        const cardW = (panelW - 56 - 20) / 3;
+        const cardH = 82;
+        const cardsY = startY + 156;
+        cards.forEach((card, i) => {
+            const x = startX + 28 + i * (cardW + 10);
+            ctx.fillStyle = 'rgba(255,255,255,0.06)';
+            ctx.fillRect(x, cardsY, cardW, cardH);
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, cardsY, cardW, cardH);
+
+            ctx.fillStyle = '#9fb3c8';
+            ctx.font = '12px Arial';
+            ctx.fillText(card.title, x + cardW / 2, cardsY + 24);
+            ctx.fillStyle = card.color;
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText(card.value, x + cardW / 2, cardsY + 58);
+        });
+
+        // 操作提示
+        ctx.fillStyle = 'rgba(255,255,255,0.52)';
+        ctx.font = '13px Arial';
+        ctx.fillText('你可以继续战斗，或分享本局战报', cx, startY + panelH - 26);
         ctx.restore();
 
         if (this.btnContinue) this.btnContinue.render(ctx);
@@ -1362,22 +1379,22 @@ export default class BattleScene extends BaseScene {
         const height = this.sceneManager.game.logicHeight;
 
         if (this.isPaused) {
-            const panelW = Math.min(380, width - 64);
-            const panelH = Math.min(470, height - 140);
+            const panelW = Math.min(460, width - 56);
+            const panelH = Math.min(620, height - 90);
             const cx = width / 2;
             const startY = (height - panelH) / 2;
 
-            const btnWidth = Math.min(260, panelW - 60);
-            const btnHeight = 46;
-            const btnSpacing = 14;
-            const firstBtnY = startY + 210;
+            const btnWidth = Math.min(316, panelW - 72);
+            const btnHeight = 54;
+            const btnSpacing = 18;
+            const firstBtnY = startY + 286;
             const btnX = cx - btnWidth / 2;
 
             this.btnContinue = new Button(btnX, firstBtnY, btnWidth, btnHeight, '▶ 继续作战');
-            this.btnContinue.setStyle('#00b894', '#021b16', 18, 6).setCallback(() => this.togglePause());
+            this.btnContinue.setStyle('#12b39a', '#03241f', 20, 8).setCallback(() => this.togglePause());
 
             this.btnShare = new Button(btnX, firstBtnY + (btnHeight + btnSpacing), btnWidth, btnHeight, '分享战报');
-            this.btnShare.setStyle('#0984e3', '#fff', 18, 6).setCallback(() => {
+            this.btnShare.setStyle('#1f8de3', '#ffffff', 20, 8).setCallback(() => {
                 if (typeof wx !== 'undefined' && wx.shareAppMessage) {
                     wx.shareAppMessage({ title: `我在太空幸存者中守卫了${Math.floor(this.waveManager.levelTime)}秒！` });
                 } else {
@@ -1386,12 +1403,12 @@ export default class BattleScene extends BaseScene {
             });
 
             this.btnSetting = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '系统设置');
-            this.btnSetting.setStyle('#636e72', '#fff', 18, 6).setCallback(() => {
+            this.btnSetting.setStyle('#6d7a85', '#ffffff', 20, 8).setCallback(() => {
                 this.spawnFloatingText('设置功能开发中', GameConfig.Screen.width / 2, 220, '#74b9ff', 24);
             });
 
-            this.btnEnd = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 3 + 8, btnWidth, btnHeight, '放弃任务');
-            this.btnEnd.setStyle('#d63031', '#fff', 18, 6).setCallback(() => {
+            this.btnEnd = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 3 + 4, btnWidth, btnHeight, '放弃任务');
+            this.btnEnd.setStyle('#df3b3b', '#ffffff', 20, 8).setCallback(() => {
                 this.endGame();
             });
 
