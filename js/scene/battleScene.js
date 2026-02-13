@@ -1223,13 +1223,12 @@ export default class BattleScene extends BaseScene {
 
 
     renderPauseModal(ctx, w, h) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+        ctx.fillStyle = 'rgba(1, 8, 18, 0.88)';
         ctx.fillRect(0, 0, w, h);
 
         const cx = w / 2;
-        const cy = h / 2;
-        const panelW = Math.min(380, w - 64);
-        const panelH = Math.min(470, h - 140);
+        const panelW = Math.min(500, w - 48);
+        const panelH = Math.min(720, h - 80);
         const startX = cx - panelW / 2;
         const startY = (h - panelH) / 2;
 
@@ -1243,52 +1242,73 @@ export default class BattleScene extends BaseScene {
         const score = Math.floor(this.score || 0);
         const hp = this.player ? `${Math.max(0, Math.ceil(this.player.hp))}/${this.player.maxHp}` : '--';
 
+        // ----- Header -----
         ctx.save();
         ctx.textAlign = 'center';
-        ctx.shadowBlur = 16;
+        ctx.shadowBlur = 18;
         ctx.shadowColor = '#00d2d3';
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 34px Arial';
-        ctx.fillText('战术暂停', cx, startY + 68);
+        ctx.font = 'bold 40px Arial';
+        ctx.fillText('战术暂停', cx, startY + 84);
         ctx.shadowBlur = 0;
-        ctx.fillStyle = '#96a8be';
-        ctx.font = '16px Arial';
-        ctx.fillText('TACTICAL PAUSE', cx, startY + 98);
+        ctx.fillStyle = '#90a5bc';
+        ctx.font = '18px Arial';
+        ctx.fillText('TACTICAL PAUSE', cx, startY + 118);
+        ctx.fillStyle = 'rgba(0, 210, 211, 0.4)';
+        ctx.fillRect(startX + 42, startY + 136, panelW - 84, 2);
+        ctx.restore();
 
-        // 统计区标题
+        // ----- Status block -----
+        const statusX = startX + 34;
+        const statusY = startY + 164;
+        const statusW = panelW - 68;
+        const statusH = 164;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillRect(statusX, statusY, statusW, statusH);
+        ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(statusX, statusY, statusW, statusH);
+
         ctx.fillStyle = '#dfe6e9';
-        ctx.font = 'bold 14px Arial';
-        ctx.fillText('战场状态', cx, startY + 136);
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('战场状态', statusX + 16, statusY + 26);
 
-        // 三个信息卡片，视觉更松弛
-        const cards = [
-            { title: '生存时间', value: `${elapsed}s`, color: '#74b9ff' },
-            { title: '当前得分', value: `${score}`, color: '#55efc4' },
-            { title: '战机耐久', value: `${hp}`, color: '#ff7675' }
+        const rows = [
+            { label: '生存时间', value: `${elapsed}s`, color: '#74b9ff' },
+            { label: '当前得分', value: `${score}`, color: '#55efc4' },
+            { label: '战机耐久', value: `${hp}`, color: '#ff7675' }
         ];
-        const cardW = (panelW - 56 - 20) / 3;
-        const cardH = 82;
-        const cardsY = startY + 156;
-        cards.forEach((card, i) => {
-            const x = startX + 28 + i * (cardW + 10);
-            ctx.fillStyle = 'rgba(255,255,255,0.06)';
-            ctx.fillRect(x, cardsY, cardW, cardH);
-            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x, cardsY, cardW, cardH);
 
+        rows.forEach((row, i) => {
+            const y = statusY + 58 + i * 34;
+            if (i > 0) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.beginPath();
+                ctx.moveTo(statusX + 14, y - 19);
+                ctx.lineTo(statusX + statusW - 14, y - 19);
+                ctx.stroke();
+            }
             ctx.fillStyle = '#9fb3c8';
-            ctx.font = '12px Arial';
-            ctx.fillText(card.title, x + cardW / 2, cardsY + 24);
-            ctx.fillStyle = card.color;
-            ctx.font = 'bold 24px Arial';
-            ctx.fillText(card.value, x + cardW / 2, cardsY + 58);
-        });
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(row.label, statusX + 16, y);
 
-        // 操作提示
-        ctx.fillStyle = 'rgba(255,255,255,0.52)';
-        ctx.font = '13px Arial';
-        ctx.fillText('你可以继续战斗，或分享本局战报', cx, startY + panelH - 26);
+            ctx.fillStyle = row.color;
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(row.value, statusX + statusW - 16, y + 2);
+        });
+        ctx.restore();
+
+        // ----- Action tip -----
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.font = '14px Arial';
+        ctx.fillText('请选择操作', cx, startY + 360);
         ctx.restore();
 
         if (this.btnContinue) this.btnContinue.render(ctx);
@@ -1379,22 +1399,22 @@ export default class BattleScene extends BaseScene {
         const height = this.sceneManager.game.logicHeight;
 
         if (this.isPaused) {
-            const panelW = Math.min(460, width - 56);
-            const panelH = Math.min(620, height - 90);
+            const panelW = Math.min(500, width - 48);
+            const panelH = Math.min(720, height - 80);
             const cx = width / 2;
             const startY = (height - panelH) / 2;
 
-            const btnWidth = Math.min(316, panelW - 72);
-            const btnHeight = 54;
+            const btnWidth = Math.min(360, panelW - 72);
+            const btnHeight = 58;
             const btnSpacing = 18;
-            const firstBtnY = startY + 286;
+            const firstBtnY = startY + 392;
             const btnX = cx - btnWidth / 2;
 
             this.btnContinue = new Button(btnX, firstBtnY, btnWidth, btnHeight, '▶ 继续作战');
-            this.btnContinue.setStyle('#12b39a', '#03241f', 20, 8).setCallback(() => this.togglePause());
+            this.btnContinue.setStyle('#12b39a', '#03241f', 22, 8).setCallback(() => this.togglePause());
 
             this.btnShare = new Button(btnX, firstBtnY + (btnHeight + btnSpacing), btnWidth, btnHeight, '分享战报');
-            this.btnShare.setStyle('#1f8de3', '#ffffff', 20, 8).setCallback(() => {
+            this.btnShare.setStyle('#1f8de3', '#ffffff', 22, 8).setCallback(() => {
                 if (typeof wx !== 'undefined' && wx.shareAppMessage) {
                     wx.shareAppMessage({ title: `我在太空幸存者中守卫了${Math.floor(this.waveManager.levelTime)}秒！` });
                 } else {
@@ -1403,12 +1423,12 @@ export default class BattleScene extends BaseScene {
             });
 
             this.btnSetting = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '系统设置');
-            this.btnSetting.setStyle('#6d7a85', '#ffffff', 20, 8).setCallback(() => {
+            this.btnSetting.setStyle('#6d7a85', '#ffffff', 22, 8).setCallback(() => {
                 this.spawnFloatingText('设置功能开发中', GameConfig.Screen.width / 2, 220, '#74b9ff', 24);
             });
 
-            this.btnEnd = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 3 + 4, btnWidth, btnHeight, '放弃任务');
-            this.btnEnd.setStyle('#df3b3b', '#ffffff', 20, 8).setCallback(() => {
+            this.btnEnd = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 3, btnWidth, btnHeight, '放弃任务');
+            this.btnEnd.setStyle('#df3b3b', '#ffffff', 22, 8).setCallback(() => {
                 this.endGame();
             });
 
