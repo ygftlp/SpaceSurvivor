@@ -7,6 +7,7 @@
 import BaseScene from './baseScene.js';
 import { GameConfig } from '../config.js';
 import { dataManager } from '../manager/dataManager.js';
+import RenderUtils from '../utils/renderUtils.js';
 
 export default class ResultScene extends BaseScene {
     constructor(sceneManager) {

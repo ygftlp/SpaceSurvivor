@@ -16,12 +16,17 @@ export default class SkillSelectionModal {
         this.width = GameConfig.Screen.width;
         this.height = this.scene.game.logicHeight || GameConfig.Screen.height;
 
-        // 卡片布局
-        this.cardWidth = 220;
-        this.cardHeight = 340;
-        this.gap = 25;
+        // 卡片布局（响应式）
+        const safeTop = GameConfig.SafeArea.top || 20;
+        const safeBottom = 28;
+        const availableW = this.width - 32;
+        const availableH = this.height - safeTop - safeBottom - 220;
+
+        this.gap = Math.max(12, Math.floor(this.width * 0.02));
+        this.cardWidth = Math.floor(Math.min(220, (availableW - this.gap * 2) / 3));
+        this.cardHeight = Math.floor(Math.min(340, Math.max(280, availableH)));
         this.startX = (this.width - (3 * this.cardWidth + 2 * this.gap)) / 2;
-        this.centerY = this.height / 2;
+        this.centerY = safeTop + 180 + this.cardHeight / 2;
 
         // 颜色配置
         this.rarityColors = {
@@ -170,6 +175,13 @@ export default class SkillSelectionModal {
         ctx.fillStyle = '#7f8c8d';
         ctx.font = '16px Arial';
         ctx.fillText('SELECT MODIFICATION MODULE', cx, 130);
+
+        const level = this.scene && this.scene.skillManager ? this.scene.skillManager.level : 1;
+        const exp = this.scene && this.scene.skillManager ? this.scene.skillManager.exp : 0;
+        const expToNext = this.scene && this.scene.skillManager ? this.scene.skillManager.expToNext : 100;
+        ctx.fillStyle = '#dfe6e9';
+        ctx.font = 'bold 15px Arial';
+        ctx.fillText(`当前等级 Lv.${level}  ·  EXP ${Math.floor(exp)}/${expToNext}`, cx, 158);
         ctx.restore();
 
         // 绘制3张技能卡
@@ -183,7 +195,7 @@ export default class SkillSelectionModal {
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('TAP TO INSTALL', cx, this.height - 80);
+        ctx.fillText('TAP TO INSTALL', cx, this.height - 46);
     }
 
     renderSkillCard(ctx, card, index) {
