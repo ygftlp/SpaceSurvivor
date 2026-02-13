@@ -1223,12 +1223,13 @@ export default class BattleScene extends BaseScene {
 
 
     renderPauseModal(ctx, w, h) {
-        ctx.fillStyle = 'rgba(2, 8, 20, 0.86)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
         ctx.fillRect(0, 0, w, h);
 
         const cx = w / 2;
-        const panelW = Math.min(460, w - 56);
-        const panelH = Math.min(620, h - 90);
+        const cy = h / 2;
+        const panelW = Math.min(380, w - 64);
+        const panelH = Math.min(470, h - 140);
         const startX = cx - panelW / 2;
         const startY = (h - panelH) / 2;
 
