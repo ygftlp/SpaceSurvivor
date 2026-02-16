@@ -1,157 +1,198 @@
-import SkillDatabase, { Skills } from './SkillDatabase.js';
+﻿import SkillDatabase, { Skills } from './SkillDatabase.js';
+import { GameConfig } from '../../config.js';
 
-/**
- * 技能管理器 - 平衡优化版
- * 管理玩家升级、技能选择和Build构建
- */
 export default class SkillManager {
     constructor(scene) {
         this.scene = scene;
-        this.player = scene.player;
+        this.player = scene ? scene.player : null;
 
-        // 成长状态
         this.level = 1;
         this.exp = 0;
         this.expToNext = 100;
-        
-        // 经验曲线调整（更快升级）
-        this.expCurve = 1.24; // 原来是1.5→1.3→1.24 (降低20%升级需求，成长更快)
+        this.expCurve = 1.24;
 
-        // 技能状态
-        this.acquiredSkills = []; // 已获得的技能列表（包含等级）
-        this.pendingLevelUps = 0; // 待处理的升级次数（支持连升多级）
-        
-        // 当前选项缓存
+        this.acquiredSkills = [];
+        this.pendingLevelUps = 0;
         this.currentOptions = [];
+
+        this.deferTriggerHandle = null;
+    }
+
+    getPlayer() {
+        if (this.scene && this.scene.player) {
+            this.player = this.scene.player;
+        }
+        return this.player;
     }
 
     addExp(amount) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
         this.exp += amount;
 
-        // 检查是否升级（支持连升）
         while (this.exp >= this.expToNext) {
             this.exp -= this.expToNext;
-            this.pendingLevelUps++;
-            this.level++;
+            this.pendingLevelUps += 1;
+            this.level += 1;
             this.expToNext = Math.floor(this.expToNext * this.expCurve);
         }
-        
-        // 有升级待处理时触发UI
-        if (this.pendingLevelUps > 0 && !this.scene.isSelectingSkill) {
+
+        if (this.pendingLevelUps > 0 && this.scene && !this.scene.isSelectingSkill) {
             this.triggerSkillSelect();
         }
     }
 
     triggerSkillSelect() {
         if (this.pendingLevelUps <= 0) return;
-        
-        this.pendingLevelUps--;
-        console.log(`Level Up! Lv.${this.level} (${this.pendingLevelUps} more pending)`);
-        
-        // 生成选项
+        if (!this.scene || this.scene.isSelectingSkill) return;
+
+        if (typeof this.scene.canOpenSkillSelectionNow === 'function' && !this.scene.canOpenSkillSelectionNow()) {
+            this.deferTriggerSkillSelect();
+            return;
+        }
+
+        this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
         this.currentOptions = this.getSkillOptions();
-        
-        // 触发UI显示
+
+        if (!Array.isArray(this.currentOptions) || this.currentOptions.length === 0) {
+            if (this.pendingLevelUps > 0) {
+                this.deferTriggerSkillSelect(120);
+            }
+            return;
+        }
+
+        if (this.shouldAutoSelectInBattle()) {
+            const picked = this.pickAutoSkill(this.currentOptions);
+            if (picked) {
+                if (this.scene && this.scene.spawnFloatingText) {
+                    this.scene.spawnFloatingText(`自动强化：${picked.name}`, GameConfig.Screen.width / 2, 220, '#00d2d3', 24);
+                }
+                this.applySkill(picked.id);
+                return;
+            }
+        }
+
         this.scene.showSkillSelection(this.currentOptions);
     }
 
-    /**
-     * 获取技能选项（根据当前等级和已选技能）
-     */
+    deferTriggerSkillSelect(delay = 220) {
+        if (this.deferTriggerHandle) return;
+        this.deferTriggerHandle = setTimeout(() => {
+            this.deferTriggerHandle = null;
+            this.triggerSkillSelect();
+        }, delay);
+    }
+
+    shouldAutoSelectInBattle() {
+        if (!GameConfig.Gameplay || GameConfig.Gameplay.autoSkillSelectInBattle !== true) return false;
+        return !!(this.scene && this.scene.constructor && this.scene.constructor.name === 'BattleScene');
+    }
+
+    pickAutoSkill(options) {
+        if (!Array.isArray(options) || options.length === 0) return null;
+
+        const rarityScore = { common: 10, rare: 30, legendary: 60 };
+        const categoryScore = {
+            core_damage: 50,
+            projectile: 45,
+            attack_speed: 40,
+            survival: 35,
+            mobility: 28,
+            mechanic: 22,
+            energy: 8
+        };
+
+        const levelById = new Map(this.acquiredSkills.map((s) => [s.id, s.level]));
+        let best = null;
+        let bestScore = -Infinity;
+
+        for (const skill of options) {
+            const currentLevel = levelById.get(skill.id) || 0;
+            const remainLevel = Math.max(0, (skill.maxLevel || 1) - currentLevel);
+            const score = (rarityScore[skill.rarity] || 0) + (categoryScore[skill.category] || 0) + remainLevel * 3 + Math.random();
+            if (score > bestScore) {
+                bestScore = score;
+                best = skill;
+            }
+        }
+
+        return best;
+    }
+
     getSkillOptions() {
-        // 将已选技能转换为技能对象
-        const selectedSkillObjects = this.acquiredSkills.map(s => ({
-            ...Skills[s.id],
+        const selectedSkillObjects = this.acquiredSkills.map((s) => ({
+            ...(Skills[s.id] || {}),
+            id: s.id,
             currentLevel: s.level
         }));
-        
         return SkillDatabase.getOptions(this.level, selectedSkillObjects);
     }
 
-    /**
-     * 应用选中的技能
-     */
     applySkill(skillId) {
         const skill = Skills[skillId];
         if (!skill) {
             console.error('Unknown skill:', skillId);
             return;
         }
-        
-        // 查找是否已拥有
-        const existing = this.acquiredSkills.find(s => s.id === skillId);
+
+        const player = this.getPlayer();
+        const existing = this.acquiredSkills.find((s) => s.id === skillId);
         let currentLevel = 1;
-        
+
         if (existing) {
-            // 升级现有技能
             if (existing.level >= skill.maxLevel) {
                 console.warn('Skill already at max level:', skillId);
                 return;
             }
-            existing.level++;
+            existing.level += 1;
             currentLevel = existing.level;
-            console.log(`Skill upgraded: ${skill.name} Lv.${currentLevel}`);
         } else {
-            // 学习新技能
             this.acquiredSkills.push({
                 id: skillId,
                 level: 1,
                 category: skill.category,
                 rarity: skill.rarity
             });
-            console.log(`New skill acquired: ${skill.name}`);
         }
-        
-        // 执行技能效果
-        if (skill.onApply && this.player) {
-            skill.onApply(this.player, currentLevel);
+
+        if (skill.onApply && player) {
+            skill.onApply(player, currentLevel);
         }
-        
-        // 触发升级视觉特效
-        if (this.scene && this.scene.effectManager && this.player) {
-            this.scene.effectManager.spawnLevelUpAura(this.player.x, this.player.y);
+
+        if (this.scene && this.scene.effectManager && player) {
+            this.scene.effectManager.spawnLevelUpAura(player.x, player.y);
         }
-        
-        // 如果还有未处理的升级，继续显示
+
         if (this.pendingLevelUps > 0) {
-            setTimeout(() => this.triggerSkillSelect(), 500);
+            this.deferTriggerSkillSelect(320);
         }
     }
 
-    /**
-     * 获取已选技能摘要（用于显示Build）
-     */
     getBuildSummary() {
         const categories = {};
         const rarities = { common: 0, rare: 0, legendary: 0 };
-        
-        this.acquiredSkills.forEach(skill => {
+
+        this.acquiredSkills.forEach((skill) => {
             const skillData = Skills[skill.id];
-            
-            // 分类统计
+            if (!skillData) return;
             categories[skillData.category] = (categories[skillData.category] || 0) + skill.level;
-            
-            // 稀有度统计
             rarities[skillData.rarity] += skill.level;
         });
-        
+
         return {
             totalSkills: this.acquiredSkills.length,
             totalLevels: this.acquiredSkills.reduce((sum, s) => sum + s.level, 0),
             categories,
             rarities,
-            skills: this.acquiredSkills.map(s => ({
-                name: Skills[s.id].name,
-                level: s.level,
-                maxLevel: Skills[s.id].maxLevel,
-                rarity: s.rarity
-            }))
+            skills: this.acquiredSkills
+                .map((s) => ({
+                    name: Skills[s.id] ? Skills[s.id].name : s.id,
+                    level: s.level,
+                    maxLevel: Skills[s.id] ? Skills[s.id].maxLevel : s.level,
+                    rarity: s.rarity
+                }))
         };
     }
 
-    /**
-     * 重置技能（局外升级或重新开始）
-     */
     reset() {
         this.level = 1;
         this.exp = 0;
@@ -159,5 +200,11 @@ export default class SkillManager {
         this.acquiredSkills = [];
         this.pendingLevelUps = 0;
         this.currentOptions = [];
+
+        if (this.deferTriggerHandle) {
+            clearTimeout(this.deferTriggerHandle);
+            this.deferTriggerHandle = null;
+        }
     }
 }
+

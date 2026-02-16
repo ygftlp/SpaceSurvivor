@@ -1,15 +1,14 @@
-import BaseFighter from './BaseFighter.js';
+﻿import BaseFighter from './BaseFighter.js';
 
 /**
- * J-20 威龙 - 隐身刺客型
- * 战术定位：伏击、绕后、优先击杀精英
- * 独特能力：【隐身模式】周期性进入隐身状态，敌人无法锁定
+ * J-20 濞侀緳 - 闅愯韩鍒哄鍨? * 鎴樻湳瀹氫綅锛氫紡鍑汇€佺粫鍚庛€佷紭鍏堝嚮鏉€绮捐嫳
+ * 鐙壒鑳藉姏锛氥€愰殣韬ā寮忋€戝懆鏈熸€ц繘鍏ラ殣韬姸鎬侊紝鏁屼汉鏃犳硶閿佸畾
  */
 export default class J20 extends BaseFighter {
     constructor() {
         super();
         this.name = '威龙 J-20';
-        this.desc = '【隐身刺客】重型隐身空优战机。周期性进入隐身模式，敌人无法锁定你。';
+        this.desc = '【隐身突防】重型隐身空优战机。可周期性进入隐身状态，降低被锁定风险。';
         this.hp = 120;
         this.speed = 10;
         this.damage = 16;
@@ -168,3 +167,4 @@ export default class J20 extends BaseFighter {
         ctx.restore();
     }
 }
+

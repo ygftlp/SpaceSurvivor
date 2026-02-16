@@ -41,61 +41,8 @@ export default class Mothership {
             main: { cooldown: 0, maxCooldown: 0.8, damage: 50, range: 2000 },  // 0.8秒冷却，50伤害，2000射程覆盖全屏
             side: { cooldown: 0, maxCooldown: 0.3, damage: 25, range: 2000 }   // 0.3秒冷却，25伤害，2000射程覆盖全屏
         };
-
-        // 护盾回复系统
-        this.lastDamageTime = 0;
-        this.regenDelay = 5.0; // 5秒未受击开始回复
-        this.regenRate = 0; // 每秒回复量 (在applyBuffs中计算)
-
-        // 玩家属性增强母舰
-        if (this.scene.player) {
-            this.applyPlayerBuffs(this.scene.player);
-        }
-
         this.fireTimer = 0;
         this.lastFireTime = 0; // 用于调试
-    }
-
-    // 应用玩家属性增强
-    applyPlayerBuffs(player) {
-        // 1. 玩家护甲值 -> 母舰护盾上限和当前护盾
-        // 假设 armor 是玩家装备提供的防御值
-        const armorBonus = player.defense || 0; 
-        
-        // 逻辑：玩家越肉，母舰越肉
-        const hpBonus = (player.maxHp - 100) * 2; 
-        if (hpBonus > 0) {
-            this.maxHp += hpBonus;
-            this.hp += hpBonus;
-            console.log(`MOTHERSHIP BUFF: HP increased by ${hpBonus} (Player MaxHP: ${player.maxHp})`);
-        }
-
-        // 设置基础护盾回复：每秒回复最大HP的 1%
-        this.regenRate = this.maxHp * 0.01;
-        console.log(`MOTHERSHIP: Shield Regen Rate set to ${this.regenRate.toFixed(1)}/sec`);
-
-        // 2. 玩家雷达/索敌 -> 母舰射程与精度（冷却缩减）
-        // 假设 player.radarStats 存在，或者根据 equipment 列表判断
-        // 这里简化：检查玩家是否装备了 Radar
-        const hasRadar = player.fighter && player.fighter.equipment.some(e => e.type === 'radar');
-        if (hasRadar) {
-            // 雷达升级：射程增加，冷却减少
-            this.weapons.main.range *= 1.2;
-            this.weapons.main.maxCooldown *= 0.8;
-            this.weapons.side.maxCooldown *= 0.8;
-            console.log('MOTHERSHIP BUFF: Radar Uplink Active - Weapons Optimized');
-        }
-
-        // 3. 玩家火力 -> 母舰伤害
-        // 转化率：玩家伤害的 50% 加成给母舰
-        // player.damage 是基础伤害，player.effectiveStats.damage 是实际伤害
-        const playerDmg = player.effectiveStats ? player.effectiveStats.damage : player.damage;
-        const dmgBonus = Math.floor(playerDmg * 0.5);
-        if (dmgBonus > 0) {
-            this.weapons.main.damage += dmgBonus;
-            this.weapons.side.damage += Math.floor(dmgBonus / 2);
-            console.log(`MOTHERSHIP BUFF: Firepower Support +${dmgBonus} damage`);
-        }
     }
 
     update(dt) {
@@ -109,23 +56,6 @@ export default class Mothership {
                 this.isJumpReady = true;
                 // 跃迁充能完成，触发胜利条件
                 this.onJumpChargeComplete();
-            }
-        }
-
-        // 护盾自动回复逻辑
-        if (this.isAlive && this.hp < this.maxHp) {
-            // 计算自上次受击后的时间
-            // 注意：我们需要一个全局时间或累加器，这里简单使用 dangerTimer 的反向逻辑是不够的
-            // 让我们使用 scene.waveManager.levelTime 或者自己维护一个计时器
-            // 简单起见，增加一个 timeSinceDamage 计时器
-            if (!this.timeSinceDamage) this.timeSinceDamage = 0;
-            this.timeSinceDamage += dt;
-
-            if (this.timeSinceDamage > this.regenDelay) {
-                const regenAmount = this.regenRate * dt;
-                this.hp = Math.min(this.maxHp, this.hp + regenAmount);
-                // 只有当回复量显著时才显示特效（避免每帧闪烁）
-                // 这里我们只在视觉上表现为护盾更亮
             }
         }
 
@@ -230,115 +160,166 @@ export default class Mothership {
     }
     
     fireMainWeapon(target) {
-        // 主炮：高能脉冲激光 (实体光束)
+        // 主炮：双联装激光
+        const angle = Math.atan2(target.y - this.y, target.x - this.x);
         const spawnY = this.y - this.height / 2; // 从母舰顶部发射
-        const leftMuzzleX = this.x - 8;
-        const rightMuzzleX = this.x + 8;
 
-        // 1. 绘制实体激光束 (Canvas Line)
-        // 我们不直接在这里画，而是生成一个 "BeamEffect" 对象交给 EffectManager
-        // 但为了简单，我们直接生成大量密集的粒子连成线，或者如果 EffectManager 支持 drawBeam 就更好
-        // 这里我们用一种“瞬时高亮线”的方式，通过 EffectManager 生成一个持续时间极短的特效对象
+        console.log(`MOTHERSHIP FIRE MAIN -> Target at (${Math.floor(target.x)}, ${Math.floor(target.y)})`);
 
-        // 既然没有现成的 Beam 类，我们用高密度的粒子模拟“光束核心”，外加 Canvas 绘制
-        // 为了视觉冲击力，我们直接在 EffectManager 里添加一个 "LaserBeam" 类型?
-        // 暂时用密集粒子 + 闪光
-        
-        // 生成光束路径上的高亮粒子
-        const dist = Math.sqrt((target.x - this.x)**2 + (target.y - spawnY)**2);
-        const angle = Math.atan2(target.y - spawnY, target.x - this.x);
-        const steps = Math.floor(dist / 10); // 每10像素一个粒子
-        
-        for (let i = 0; i < steps; i++) {
-            const t = i / steps;
-            
-            // 左炮管
-            const lx = leftMuzzleX + (target.x - leftMuzzleX) * t;
-            const ly = spawnY + (target.y - spawnY) * t;
-            
-            // 右炮管
-            const rx = rightMuzzleX + (target.x - rightMuzzleX) * t;
-            const ry = spawnY + (target.y - spawnY) * t;
-
-            if (this.scene.effectManager) {
-                // 核心白光
-                this.scene.effectManager.spawnParticle(lx, ly, '#ffffff', 2);
-                this.scene.effectManager.spawnParticle(rx, ry, '#ffffff', 2);
-                
-                // 外围光晕 (青色/蓝色)
-                if (Math.random() > 0.5) {
-                    this.scene.effectManager.spawnParticle(lx + (Math.random()-0.5)*4, ly, '#00ffff', 4);
-                    this.scene.effectManager.spawnParticle(rx + (Math.random()-0.5)*4, ry, '#00ffff', 4);
-                }
-            }
-        }
-
-        // 2. 炮口特大闪光
+        // 创建激光束效果 - 从母舰顶部到目标的连线
         if (this.scene.effectManager) {
-             this.scene.effectManager.spawnExplosion(leftMuzzleX, spawnY, 'small');
-             this.scene.effectManager.spawnExplosion(rightMuzzleX, spawnY, 'small');
-             
-             // 3. 目标点爆炸
-             this.scene.effectManager.spawnExplosion(target.x, target.y, 'medium');
-             this.scene.effectManager.spawnShockwave(target.x, target.y, '#00ffff', 60);
-             
-             // 4. 浮动文字
-             this.scene.effectManager.spawnFloatingText(
+            // 计算炮口位置（双联装主炮在顶部中央）
+            const leftMuzzleX = this.x - 4;
+            const rightMuzzleX = this.x + 4;
+
+            // 绘制激光束 - 使用更多粒子，更大尺寸，更亮的颜色
+            const beamSteps = 35;
+            for (let i = 0; i <= beamSteps; i++) {
+                const t = i / beamSteps;
+                // 左炮管激光 - 使用亮黄色/橙色
+                const lx = leftMuzzleX + (target.x - leftMuzzleX) * t;
+                const ly = spawnY + (target.y - spawnY) * t;
+                // 添加随机偏移使光束看起来更自然
+                const jitterX = (Math.random() - 0.5) * 6;
+                const jitterY = (Math.random() - 0.5) * 6;
+                // 随机选择亮黄色或橙色
+                const beamColor = Math.random() > 0.3 ? '#ffcc00' : '#ff8800';
+                this.scene.effectManager.spawnParticle(lx + jitterX, ly + jitterY, beamColor, 3);
+
+                // 右炮管激光
+                const rx = rightMuzzleX + (target.x - rightMuzzleX) * t;
+                const ry = spawnY + (target.y - spawnY) * t;
+                const rjitterX = (Math.random() - 0.5) * 6;
+                const rjitterY = (Math.random() - 0.5) * 6;
+                const rBeamColor = Math.random() > 0.3 ? '#ffcc00' : '#ff8800';
+                this.scene.effectManager.spawnParticle(rx + rjitterX, ry + rjitterY, rBeamColor, 3);
+            }
+
+            // 炮口火焰效果 - 大幅增加粒子数量和大小
+            for (let i = 0; i < 20; i++) {
+                const spreadAngle = angle + (Math.random() - 0.5) * 0.5;
+                const distance = Math.random() * 40;
+                const px = this.x + Math.cos(spreadAngle) * distance;
+                const py = spawnY + Math.sin(spreadAngle) * distance;
+                // 更亮的火焰颜色
+                const color = Math.random() > 0.5 ? '#ffaa00' : '#ff6600';
+                this.scene.effectManager.spawnParticle(px, py, color, 4);
+            }
+
+            // 击中目标时的爆炸粒子 - 更大量、更亮
+            for (let i = 0; i < 15; i++) {
+                const explodeAngle = Math.random() * Math.PI * 2;
+                const explodeDist = Math.random() * 35;
+                const ex = target.x + Math.cos(explodeAngle) * explodeDist;
+                const ey = target.y + Math.sin(explodeAngle) * explodeDist;
+                const color = Math.random() > 0.5 ? '#ffcc00' : '#ff9900';
+                this.scene.effectManager.spawnParticle(ex, ey, color, 3);
+            }
+
+            // 添加冲击波圆环效果
+            if (this.scene.effectManager.spawnShockwave) {
+                this.scene.effectManager.spawnShockwave(target.x, target.y, '#ffaa00', 40);
+            }
+
+            // 添加浮动文字显示伤害
+            this.scene.effectManager.spawnFloatingText(
+                '母舰炮火!',
+                this.x,
+                this.y - 120,
+                '#ffcc00',
+                24
+            );
+
+            // 同时在目标位置显示伤害数字
+            this.scene.effectManager.spawnFloatingText(
                 `-${this.weapons.main.damage}`,
                 target.x,
-                target.y - 30,
-                '#00ffff',
-                24
+                target.y - 20,
+                '#ff6600',
+                20
             );
         }
 
         // 造成伤害
         target.takeDamage(this.weapons.main.damage);
 
-        // 屏幕震动
+        // 屏幕震动 - 更强的震动效果
         if (this.scene.effectManager) {
-            this.scene.effectManager.shake(6, 0.1);
+            this.scene.effectManager.shake(5, 0.15);
         }
     }
     
     fireSideWeapon(target) {
-        // 侧炮：快速追踪弹 (实体光束)
-        const spawnY = this.y - this.height / 2 + 20;
+        // 侧炮：小型速射
+        const angle = Math.atan2(target.y - this.y, target.x - this.x);
+        const spawnY = this.y - this.height / 2 + 20; // 从母舰顶部稍偏下的位置发射
+
+        // 根据目标位置决定使用左侧还是右侧炮
         const isLeftSide = target.x < this.x;
         const muzzleOffsetX = isLeftSide ? -this.width * 0.65 : this.width * 0.65;
         const muzzleX = this.x + muzzleOffsetX;
 
-        const dist = Math.sqrt((target.x - muzzleX)**2 + (target.y - spawnY)**2);
-        const steps = Math.floor(dist / 15); // 稍微稀疏一点
-        
-        for (let i = 0; i < steps; i++) {
-            const t = i / steps;
-            const bx = muzzleX + (target.x - muzzleX) * t;
-            const by = spawnY + (target.y - spawnY) * t;
+        console.log(`MOTHERSHIP FIRE SIDE (${isLeftSide ? 'LEFT' : 'RIGHT'}) -> Target at (${Math.floor(target.x)}, ${Math.floor(target.y)})`);
 
-            if (this.scene.effectManager) {
-                // 黄色/橙色 粒子流
-                this.scene.effectManager.spawnParticle(bx, by, '#ffcc00', 2);
-                if (Math.random() > 0.7) {
-                    this.scene.effectManager.spawnParticle(bx + (Math.random()-0.5)*3, by, '#ff9900', 3);
-                }
-            }
-        }
-
+        // 创建子弹效果
         if (this.scene.effectManager) {
-             // 击中效果
-             this.scene.effectManager.spawnParticle(target.x, target.y, '#ffaa00', 5);
-             this.scene.effectManager.spawnFloatingText(
+            // 绘制激光束 - 更多粒子，更大尺寸，亮黄色/橙色
+            const beamSteps = 25;
+            for (let i = 0; i <= beamSteps; i++) {
+                const t = i / beamSteps;
+                const bx = muzzleX + (target.x - muzzleX) * t;
+                const by = spawnY + (target.y - spawnY) * t;
+                // 光束带随机抖动
+                const jitterX = (Math.random() - 0.5) * 4;
+                const jitterY = (Math.random() - 0.5) * 4;
+                // 使用亮黄色/橙色替代原来的蓝色
+                const beamColor = Math.random() > 0.4 ? '#ffcc00' : '#ff9900';
+                this.scene.effectManager.spawnParticle(bx + jitterX, by + jitterY, beamColor, 3);
+            }
+
+            // 炮口闪光 - 大幅增加粒子数量和大小
+            for (let i = 0; i < 12; i++) {
+                const spreadAngle = angle + (Math.random() - 0.5) * 0.5;
+                const distance = Math.random() * 30;
+                const px = muzzleX + Math.cos(spreadAngle) * distance;
+                const py = spawnY + Math.sin(spreadAngle) * distance;
+                // 更亮的火焰颜色
+                const color = Math.random() > 0.5 ? '#ffaa00' : '#ff7700';
+                this.scene.effectManager.spawnParticle(px, py, color, 3);
+            }
+
+            // 击中效果 - 更大量、更亮
+            for (let i = 0; i < 10; i++) {
+                const explodeAngle = Math.random() * Math.PI * 2;
+                const explodeDist = Math.random() * 25;
+                const ex = target.x + Math.cos(explodeAngle) * explodeDist;
+                const ey = target.y + Math.sin(explodeAngle) * explodeDist;
+                const color = Math.random() > 0.5 ? '#ffcc00' : '#ffaa00';
+                this.scene.effectManager.spawnParticle(ex, ey, color, 3);
+            }
+
+            // 添加小型冲击波圆环效果
+            if (this.scene.effectManager.spawnShockwave) {
+                this.scene.effectManager.spawnShockwave(target.x, target.y, '#ffcc00', 25);
+            }
+
+            // 在目标位置显示伤害数字
+            this.scene.effectManager.spawnFloatingText(
                 `-${this.weapons.side.damage}`,
                 target.x,
                 target.y - 15,
-                '#ffcc00',
+                '#ffaa00',
                 16
             );
         }
 
         // 造成伤害
         target.takeDamage(this.weapons.side.damage);
+
+        // 屏幕震动 - 侧炮震动较小但仍可感知
+        if (this.scene.effectManager) {
+            this.scene.effectManager.shake(3, 0.1);
+        }
     }
 
     takeDamage(damage) {
@@ -347,7 +328,6 @@ export default class Mothership {
         this.hp -= damage;
         this.damageFlash = 0.3; // 闪红0.3秒
         this.dangerTimer = 2.0; // 进入危险状态2秒
-        this.timeSinceDamage = 0; // 重置护盾回复计时器
 
         // 触发强烈反馈
         if (this.scene.effectManager) {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Author: yangguangftlp@163.com
  * Date: 2026-01-31
  * Description: Enemy class representing hostile entities.
@@ -40,10 +40,15 @@ export default class Enemy {
         this.active = true;
         this.rotation = 0; // Physics rotation
         this.angle = Math.PI / 2; // For movement math (radians, pointing down)
+        this.hasEnteredView = false;
+        this.fireEnableDelay = 0.45 + Math.random() * 0.35;
+        this.spawnGraceDuration = Number.isFinite(config.spawnGraceDuration) ? config.spawnGraceDuration : 0.9;
+        this.spawnGraceTimer = this.spawnGraceDuration;
+        this.lifeTime = 0;
 
-        // 高度层系统（与Player对应）
-        this.altitude = config.altitude || 500; // 默认中空层
-        this.altitudeRange = config.altitudeRange || 100; // 高度变化范围
+        // 楂樺害灞傜郴缁燂紙涓嶱layer瀵瑰簲锛?
+        this.altitude = config.altitude || 500; // 榛樿涓┖灞?
+        this.altitudeRange = config.altitudeRange || 100; // 楂樺害鍙樺寲鑼冨洿
         this.targetAltitude = this.altitude;
 
         // Specific Props
@@ -67,6 +72,10 @@ export default class Enemy {
 
         // Update internal time for animations
         this.time = (this.time || 0) + dt;
+        this.lifeTime += dt;
+        if (this.spawnGraceTimer > 0) {
+            this.spawnGraceTimer = Math.max(0, this.spawnGraceTimer - dt);
+        }
 
         // 1. Delegate Movement
         if (this.movementStrategy) {
@@ -78,21 +87,47 @@ export default class Enemy {
             this.weaponStrategy.update(this, dt);
         }
 
-        // 3. 高度层移动（部分敌人会上下浮动）
+        // 3. 楂樺害灞傜Щ鍔紙閮ㄥ垎鏁屼汉浼氫笂涓嬫诞鍔級
         if (this.config.movement === 'SINE' || this.config.movement === 'HOVER') {
-            // 这些敌人在高度层上下浮动
+            // 杩欎簺鏁屼汉鍦ㄩ珮搴﹀眰涓婁笅娴姩
             this.altitude += Math.sin(this.time * 2) * 0.5;
             this.altitude = Math.max(100, Math.min(900, this.altitude));
         }
 
         const screenW = GameConfig.Screen.width;
-        const screenH = (this.scene && this.scene.game && this.scene.game.logicHeight) ? this.scene.game.logicHeight : GameConfig.Screen.height;
+        const screenH = (this.scene && this.scene.sceneManager && this.scene.sceneManager.game && this.scene.sceneManager.game.logicHeight)
+            ? this.scene.sceneManager.game.logicHeight
+            : GameConfig.Screen.height;
+        const inVisibleBounds = (
+            this.x > -this.width &&
+            this.x < screenW + this.width &&
+            this.y > -this.height &&
+            this.y < screenH + this.height
+        );
+        if (inVisibleBounds) {
+            this.hasEnteredView = true;
+        }
+
+        // Defensive guard: avoid NaN/Infinity instantly culling enemies.
+        if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) {
+            this.x = Number.isFinite(this.x) ? this.x : GameConfig.Screen.width * 0.5;
+            this.y = Number.isFinite(this.y) ? this.y : 200;
+        }
+
+        const minLifetimeForCull = Math.max(1.2, this.spawnGraceDuration + 0.2);
+        if (this.lifeTime < minLifetimeForCull) {
+            return;
+        }
         if (this.y > screenH + 220 || this.y < -220 || this.x < -160 || this.x > screenW + 160) {
-            this.active = false; // 无论从哪个边界离开屏幕，都标记为失效
+            this.active = false; // 鏃犺浠庡摢涓竟鐣岀寮€灞忓箷锛岄兘鏍囪涓哄け鏁?
         }
     }
 
     takeDamage(amount) {
+        // Spawn protection: prevents "spawn then instantly disappear".
+        if ((this.spawnGraceTimer || 0) > 0) {
+            return;
+        }
         this.hp -= amount;
         if (this.hp <= 0) {
             this.hp = 0;
@@ -122,21 +157,30 @@ export default class Enemy {
 
         ctx.save();
         ctx.translate(this.x, this.y);
-        
-        // 强制重置所有可能污染的状态
-        ctx.globalAlpha = 1.0;
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-        
-        // Enemy faces DOWN by default (PI/2)
+        // Enemy faces DOWN by default (PI/2), so we might need to adjust based on movement angle
         ctx.rotate(this.rotation);
 
-        // 绘制调试边框（确保敌人可见）
-        ctx.strokeStyle = '#ff0000';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-this.width/2, -this.height/2, this.width, this.height);
+        // 鏍规嵁楂樺害灞傛坊鍔犺瑙夋晥鏋?- 绠€鍖栫増锛氬彧缂╂斁澶у皬锛屼繚鎸佸畬鍏ㄤ笉閫忔槑
+        const altitudeFactor = this.altitude / 1000; // 0.1 - 0.9
+        const scaleByAltitude = Math.max(1.05, 1 - (altitudeFactor * 0.12));
+        
+        ctx.scale(scaleByAltitude, scaleByAltitude);
+        // 濮嬬粓淇濇寔瀹屽叏涓嶉€忔槑锛岀‘淇濆彲瑙?
+        const spawnProgress = this.spawnGraceDuration > 0
+            ? (1 - (this.spawnGraceTimer / this.spawnGraceDuration))
+            : 1;
+        ctx.globalAlpha = Math.max(0.35, Math.min(1, spawnProgress * 1.25));
+
+        // 楂樼┖娣诲姞闃村奖鏁堟灉
+        if (this.altitude > 600) {
+            ctx.shadowColor = 'rgba(100, 100, 255, 0.3)';
+            ctx.shadowBlur = 15;
+        } else if (this.altitude < 300) {
+            // 浣庣┖娣诲姞鍦伴潰闃村奖
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetY = 10;
+        }
 
         // 1. Procedural Render (Priority)
         if (this.config.genome) {
@@ -169,6 +213,36 @@ export default class Enemy {
             this.renderHpBar(ctx);
         }
 
+        this.renderThreatOutline(ctx);
+
+        ctx.restore();
+    }
+
+    renderThreatOutline(ctx) {
+        const pulse = 0.4 + Math.sin((this.time || 0) * 6) * 0.2;
+        const color = this.config.color || '#ff6666';
+
+        ctx.save();
+        ctx.fillStyle = `rgba(255,255,255,${0.16 + pulse * 0.18})`;
+        ctx.beginPath();
+        ctx.moveTo(0, -this.height * 0.22);
+        ctx.lineTo(this.width * 0.22, 0);
+        ctx.lineTo(0, this.height * 0.22);
+        ctx.lineTo(-this.width * 0.22, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(255,255,255,${0.38 + pulse * 0.2})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.width * 0.38, this.height * 0.38, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.width * 0.3, this.height * 0.3, 0, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.restore();
     }
 
@@ -203,12 +277,11 @@ export default class Enemy {
         const w = this.width / 2;
         const h = this.height / 2;
 
-        // 强制发光效果让敌人更显眼
+        // 娣诲姞鍙戝厜鏁堟灉璁╂晫浜烘洿鏄剧溂
         ctx.shadowColor = color;
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 10;
 
-        // 绘制主体 - 明亮的颜色
-        ctx.fillStyle = color || '#ff3333';
+        ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(0, h); // Nose (Pointing Down)
         ctx.lineTo(w, -h); // Right Wingtip
@@ -219,22 +292,19 @@ export default class Enemy {
 
         ctx.shadowBlur = 0;
 
-        // 内部细节 - 深色
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        // Details
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
         ctx.moveTo(0, h);
         ctx.lineTo(5, -h + 5);
         ctx.lineTo(-5, -h + 5);
         ctx.fill();
 
-        // 驾驶舱 - 白色发光
+        // Cockpit - 鏇翠寒鏇存樉鐪?
         ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.arc(0, 0, 4, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
     }
 
     renderFighter(ctx, color) {
@@ -376,3 +446,4 @@ export default class Enemy {
         ctx.fillRect(-barWidth / 2, barY, barWidth * hpPercent, barHeight);
     }
 }
+

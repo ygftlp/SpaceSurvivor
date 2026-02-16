@@ -21,6 +21,7 @@ export default class Main {
 
         this.lastFrameTime = Date.now();
         this.frame = 0;
+        this.debugToggleCooldownUntil = 0;
 
         this.init();
         this.initInput();
@@ -50,6 +51,14 @@ export default class Main {
 
     initInput() {
         wx.onTouchStart((res) => {
+            const now = Date.now();
+            if (res.touches && res.touches.length >= 3 && now >= this.debugToggleCooldownUntil) {
+                this.debugToggleCooldownUntil = now + 600;
+                GameConfig.Debug.hitboxOverlay = !GameConfig.Debug.hitboxOverlay;
+                this.notifyDebugToggle(GameConfig.Debug.hitboxOverlay);
+                return;
+            }
+
             const touch = res.touches[0];
             const x = touch.clientX / this.scaleRatio;
             const y = touch.clientY / this.scaleRatio;
@@ -106,5 +115,15 @@ export default class Main {
         this.render();
 
         window.requestAnimationFrame(this.loop.bind(this), this.canvas);
+    }
+
+    notifyDebugToggle(enabled) {
+        const currentScene = this.sceneManager.currentScene;
+        const msg = enabled ? 'DEBUG HITBOX: ON' : 'DEBUG HITBOX: OFF';
+        if (currentScene && typeof currentScene.spawnFloatingText === 'function') {
+            currentScene.spawnFloatingText(msg, GameConfig.Screen.width / 2, 180, enabled ? '#00ff99' : '#ff7675', 24);
+        } else {
+            console.log(msg);
+        }
     }
 }

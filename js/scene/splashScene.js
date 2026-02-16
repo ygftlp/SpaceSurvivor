@@ -82,12 +82,12 @@ export default class SplashScene extends BaseScene {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 60px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('SPACE', cx, cy - 40);
+        ctx.fillText('太空', cx, cy - 40);
         
         ctx.shadowColor = '#5f27cd';
         ctx.fillStyle = '#00d2d3';
         ctx.font = 'bold 40px Arial';
-        ctx.fillText('SURVIVOR', cx, cy + 10);
+        ctx.fillText('幸存者', cx, cy + 10);
         ctx.restore();
 
         // 进度条背景
@@ -111,14 +111,14 @@ export default class SplashScene extends BaseScene {
         ctx.shadowBlur = 0;
 
         // Loading 文字
-        ctx.fillStyle = '#rgba(255,255,255,0.5)';
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`SYSTEM INITIALIZING... ${this.progress}%`, cx, barY + 30);
+        ctx.fillText(`系统初始化中... ${this.progress}%`, cx, barY + 30);
 
         // 版权信息
         ctx.fillStyle = '#333';
         ctx.font = '12px Arial';
-        ctx.fillText('VER 1.0.0 | POWERED BY OPENCODE', cx, this.height - 40);
+        ctx.fillText('版本 1.0.0 | OpenCode 引擎', cx, this.height - 40);
     }
 }

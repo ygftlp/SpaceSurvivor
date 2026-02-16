@@ -1,4 +1,4 @@
-import BaseScene from './baseScene.js';
+﻿﻿import BaseScene from './baseScene.js';
 import { GameConfig } from '../config.js';
 import { dataManager } from '../manager/dataManager.js';
 import { audioManager } from '../manager/audioManager.js';
@@ -58,6 +58,8 @@ export default class BattleScene extends BaseScene {
         this.uiComponents = [];
         this.isSelectingSkill = false;
         this.skillModal = null;
+        this.pausePressedButton = null;
+        this.debugLastTouch = null;
 
         // Menu & Pause System
         this.isPaused = false;
@@ -69,14 +71,21 @@ export default class BattleScene extends BaseScene {
         this.floatingTexts = [];
         this.lastGold = 0;
 
-        // 高度层控制 - 已移除
+        // Altitude-layer controls removed.
         this.touchStartY = 0;
         this.touchStartTime = 0;
         this.isVerticalSwipe = false;
 
-        // 引导提示节流，避免刷屏
+        // Hint cooldowns to avoid spam.
         this.lowHpHintCooldown = 0;
         this.overheatHintCooldown = 0;
+
+        // Opening anti-bullet-rain limiter (first 15s).
+        this.openingFireWindowStart = 0;
+        this.openingFireCount = 0;
+        this.missionPulse = 0;
+        this.enemyVisibilityRescueTimer = 0;
+        this.forcedVisibleSpawnTimer = 0;
     }
 
     enter() {
@@ -93,31 +102,38 @@ export default class BattleScene extends BaseScene {
         this.goldGained = 0;
         this.lowHpHintCooldown = 0;
         this.overheatHintCooldown = 0;
+        this.debugLastTouch = null;
+        this.openingFireWindowStart = 0;
+        this.openingFireCount = 0;
+        this.currentBoss = null;
+        this.missionPulse = 0;
+        this.enemyVisibilityRescueTimer = 1.0;
+        this.forcedVisibleSpawnTimer = 1.2;
 
         // Effects
         this.effectManager = new EffectManager(this);
 
-        // Mothership - 母舰保护系统（核心叙事锚点）
+        // Mothership - 濮ｅ秷鍩屾穱婵囧Б缁崵绮洪敍鍫熺壋韫囧啫褰婃禍瀣晪閻愮櫢绱?
         this.mothership = new Mothership(this);
 
-        // 修复：黑匣子位置防重叠检查
+        // Fix: prevent blackbox spawning too close to mothership.
         if (this.wreckage) {
             const dx = this.wreckage.x - this.mothership.x;
             const dy = this.wreckage.y - this.mothership.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            // 如果黑匣子距离母舰太近（小于350像素），强制将其移开
+            // 婵″倹鐏夋鎴濆皥鐎涙劘绐涚粋缁樼槤閼告澘銇婃潻鎴礄鐏忓繋绨?50閸嶅繒绀岄敍澶涚礉瀵搫鍩楃亸鍡楀従缁夎绱?
             if (dist < 350) {
-                console.log('调整黑匣子位置以避免与母舰重叠');
-                // 强制移动到屏幕上半部分的两侧
-                this.wreckage.y = 200 + Math.random() * 100; // 屏幕上方 200-300px 处
+                console.log('Adjust wreckage position to avoid overlapping mothership');
+                // 瀵搫鍩楃粔璇插З閸掓澘鐫嗛獮鏇氱瑐閸楀﹪鍎撮崚鍡欐畱娑撱倓鏅?
+                this.wreckage.y = 200 + Math.random() * 100; // Top zone: y 200-300
                 
-                // 随机放左边或右边，避开中轴线
+                // Place left/right side randomly to avoid center lane.
                 if (Math.random() > 0.5) {
-                    this.wreckage.x = 50 + Math.random() * 100; // 左侧
+                    this.wreckage.x = 50 + Math.random() * 100; // 瀹革缚鏅?
                 } else {
-                    this.wreckage.x = GameConfig.Screen.width - 150 + Math.random() * 100; // 右侧
+                    this.wreckage.x = GameConfig.Screen.width - 150 + Math.random() * 100; // 閸欏厖鏅?
                 }
-                console.log(`黑匣子新位置: ${this.wreckage.x}, ${this.wreckage.y}`);
+                console.log(`姒涙垵灏堢€涙劖鏌婃担宥囩枂: ${this.wreckage.x}, ${this.wreckage.y}`);
             }
         }
 
@@ -126,8 +142,8 @@ export default class BattleScene extends BaseScene {
 
         this.magnetRange = 150; // Default pickup range
 
-        // 阶段性成就提示系统
-        this.stageMilestones = [30, 60]; // 30秒和60秒显示阶段性提示
+        // Milestone prompts for beat transitions.
+        this.stageMilestones = [30, 70]; // Beat transition checkpoints for director pacing.
         this.achievedMilestones = [];
 
         // 1. Init Pause Button (Top-Left)
@@ -161,33 +177,43 @@ export default class BattleScene extends BaseScene {
         this.player = new Player(GameConfig.Screen.width / 2, logicH - 150, logicH);
         this.player.refreshStats();
         
-        // 5. 高度按钮回调 - 已移除
+        // 5. Altitude button callback removed.
 
 
         // 6. Start Survival Mode
         this.waveManager.startSurvival();
         
-        // 游戏开始提示
+        // Start-of-run hints.
+        const missionDuration = this.waveManager && this.waveManager.getDurationSec
+            ? this.waveManager.getDurationSec()
+            : 90;
         this.spawnFloatingText(
-            '保护母舰90秒！',
+            `守护母舰 ${missionDuration} 秒`,
             GameConfig.Screen.width / 2,
             300,
             '#00ccff',
-            36
+            32
         );
         this.spawnFloatingText(
-            '左下摇杆移动',
+            '拖动摇杆移动',
             GameConfig.Screen.width / 2,
             350,
             '#ffffff',
             26
         );
         this.spawnFloatingText(
-            '点击右下A键释放特技',
+            '点击技能按钮释放主动技能',
             GameConfig.Screen.width / 2,
             390,
             '#ffffff',
             26
+        );
+        this.spawnFloatingText(
+            '坚持越久奖励越高，结算可强化战机',
+            GameConfig.Screen.width / 2,
+            430,
+            '#ffd166',
+            22
         );
         
         setTimeout(() => {
@@ -213,7 +239,7 @@ export default class BattleScene extends BaseScene {
         this.obstacles = [];
         this.floatingTexts = [];
         
-        // 清理效果管理器
+        // Clear effect manager state.
         if (this.effectManager) {
             this.effectManager.particles = [];
             this.effectManager.floatingTexts = [];
@@ -296,7 +322,7 @@ export default class BattleScene extends BaseScene {
 
         if (this.gameEnded) return;
 
-        // Update Mothership (母舰系统)
+        // Update Mothership (濮ｅ秷鍩岀化鑽ょ埠)
         if (this.mothership) {
             this.mothership.update(dt);
             
@@ -306,7 +332,7 @@ export default class BattleScene extends BaseScene {
                 this.mothershipLowHpTimer += dt;
                 if (this.mothershipLowHpTimer > 2.0) {
                     this.mothershipLowHpTimer = 0;
-                    this.spawnFloatingText('⚠ 母舰护盾紧急!', this.mothership.x, this.mothership.y - 120, '#ff0000', 36);
+                    this.spawnFloatingText('警告：母舰护盾濒危！', this.mothership.x, this.mothership.y - 120, '#ff0000', 36);
                     if (this.effectManager) this.effectManager.shake(5, 0.5);
                 }
             }
@@ -315,33 +341,80 @@ export default class BattleScene extends BaseScene {
         // Update Wave Manager
         this.waveManager.update(dt);
 
-        if (this.mothership && this.mothership.isAlive && this.waveManager.levelTime >= 90) {
-            this.endGame(true);
-            return;
+        // Visibility rescue: hard guarantee visible enemies in early run.
+        this.enemyVisibilityRescueTimer -= dt;
+        this.forcedVisibleSpawnTimer -= dt;
+        const battleTime = this.waveManager && Number.isFinite(this.waveManager.levelTime)
+            ? this.waveManager.levelTime
+            : 0;
+        const activeEnemies = Array.isArray(this.enemies)
+            ? this.enemies.filter((e) => e && e.active && !e.isBoss).length
+            : 0;
+
+        if (this.enemyVisibilityRescueTimer <= 0) {
+            this.enemyVisibilityRescueTimer = 2.4;
+            if (battleTime < 26 && activeEnemies <= 1 && this.waveManager && this.waveManager.spawnService) {
+                this.waveManager.spawnService.spawnEnemy('Drone_Small', this.waveManager.getCurrentAct(), {
+                    x: GameConfig.Screen.width * (0.3 + Math.random() * 0.4),
+                    y: 240,
+                    spawnTime: battleTime
+                });
+            }
         }
 
-        // 阶段性成就提示检查
+        // Direct fallback spawner bypassing director pipeline.
+        if (this.forcedVisibleSpawnTimer <= 0 && battleTime < 35 && activeEnemies < 3) {
+            this.forcedVisibleSpawnTimer = 2.1;
+            const side = Math.random() > 0.5 ? 0.24 : 0.76;
+            const x = GameConfig.Screen.width * side + (Math.random() - 0.5) * 40;
+            const forcedConfig = {
+                chassis: 'SCOUT',
+                hp: 32,
+                speed: 118,
+                damage: 6,
+                score: 12,
+                movement: 'LINEAR',
+                weapon: 'NONE',
+                width: 84,
+                height: 84,
+                scale: 1.2,
+                color: '#4af2dd',
+                spawnGraceDuration: 2.2
+            };
+            const enemy = new Enemy(forcedConfig, x, 250, this);
+            enemy.hasEnteredView = true;
+            enemy.fireEnableDelay = 2.4;
+            this.enemies.push(enemy);
+        }
+
+        // Victory is unified to a single source:
+        // mothership jump-charge complete => Mothership.onJumpChargeComplete => endGame(true).
+
+        // Milestone achievement check.
         const currentTime = this.waveManager.levelTime;
         this.stageMilestones.forEach(milestone => {
             if (currentTime >= milestone && !this.achievedMilestones.includes(milestone)) {
                 this.achievedMilestones.push(milestone);
-                // 显示阶段性成就
+                // Show milestone toast.
                 if (this.effectManager) {
                     const messages = {
-                        30: '🎉 第1阶段完成！坚持住！',
-                        60: '🔥 第2阶段完成！最后冲刺！'
+                        30: '阶段一完成！',
+                        70: '阶段二完成！'
                     };
+                    const milestoneHint = milestone === 30
+                        ? '阶段一完成：保持阵型'
+                        : (milestone === 70 ? '阶段二完成：准备终局战' : messages[milestone]);
                     this.effectManager.spawnFloatingText(
-                        messages[milestone],
+                        milestoneHint,
                         GameConfig.Screen.width / 2,
                         200,
                         '#f39c12',
                         32
                     );
-                    // 屏幕震动效果
+                    // 鐏炲繐绠烽棁鍥уЗ閺佸牊鐏?
                     this.effectManager.shake(5, 0.3);
                 }
-                // 自动升级技能
+                // Auto level-up reward.
                 if (this.skillManager) {
                     this.skillManager.addExp(this.skillManager.expToNext);
                 }
@@ -356,7 +429,7 @@ export default class BattleScene extends BaseScene {
             const hpRate = this.player.maxHp > 0 ? this.player.hp / this.player.maxHp : 1;
             if (hpRate < 0.3 && this.lowHpHintCooldown <= 0) {
                 this.lowHpHintCooldown = 6.0;
-                this.spawnFloatingText('⚠ 战机受损严重，优先走位！', GameConfig.Screen.width / 2, 320, '#ff6b6b', 24);
+                this.spawnFloatingText('警告：战机严重受损，请持续机动！', GameConfig.Screen.width / 2, 320, '#ff6b6b', 24);
             }
 
             const isOverheated = Date.now() < this.player.overheatedUntil;
@@ -381,6 +454,15 @@ export default class BattleScene extends BaseScene {
             e.update(dt);
 
             if (!e.active) {
+                if ((e.lifeTime || 0) < 1.5 && e.hp > 0) {
+                    console.warn('[EnemyEarlyDespawn]', {
+                        x: e.x,
+                        y: e.y,
+                        hp: e.hp,
+                        lifeTime: e.lifeTime,
+                        spawnGraceTimer: e.spawnGraceTimer
+                    });
+                }
                 if (e.hp <= 0) {
                     this.score += e.score || 10;
                     this.spawnLoot(e.x, e.y);
@@ -412,11 +494,11 @@ export default class BattleScene extends BaseScene {
                         } else if (l.type === 'exp') {
                             this.addExp(10);
                         } else if (l.type === 'energy') {
-                            // 能量电池：恢复50能量
+                            // Energy battery: restore 50 energy.
                             if (this.player) {
                                 this.player.overchargeEnergy(50);
-                                this.spawnFloatingText('能量+50!', this.player.x, this.player.y - 40, '#ffcc00', 25);
-                                audioManager.play('coin'); // 临时用金币音效
+                                this.spawnFloatingText('能量 +50', this.player.x, this.player.y - 40, '#ffcc00', 25);
+                                audioManager.play('coin'); // Reuse coin SFX.
                             }
                         }
                     }
@@ -431,35 +513,46 @@ export default class BattleScene extends BaseScene {
     }
 
     spawnLoot(x, y, enemyType = 'normal') {
-        // 基础掉落：经验球
+        // 閸╄櫣顢呴幒澶庢儰閿涙氨绮℃宀€鎮?
         this.loots.push(new Loot(x, y, 'exp'));
         
-        // 精英怪和BOSS有概率掉落能量电池
+        // Elite/Boss can drop energy batteries.
         if (enemyType === 'elite' || enemyType === 'boss') {
-            if (Math.random() < 0.4) { // 40%概率
+            if (Math.random() < 0.4) { // 40%濮掑倻宸?
                 this.loots.push(new Loot(x, y, 'energy'));
             }
         }
     }
 
     spawnEnemyBullet(x, y, angle, speed, config = {}) {
-        // Damage is usually handled by enemy config, but let's pass it or default
-        // Wait, the signature in weapon.js is: spawnEnemyBullet(x, y, angle, speed)
-        // I should probably stick to that or update weapon.js first.
-        // Actually, let's update weapon.js to pass config as well.
-        // But for now, let's define it flexibly.
+        if (this.isPaused || this.gameEnded) return;
+        const battleTime = (this.waveManager && Number.isFinite(this.waveManager.levelTime))
+            ? this.waveManager.levelTime
+            : 999;
 
-        // However, standard Bullet constructor is: (x, y, angle, speed, damage, isEnemy, config)
-        // weapon.js calls: spawnEnemyBullet(x, y, angle, speed)
-        // So I need to determine damage here or allow weapon.js to pass it.
-        // The current weapon.js hardcodes speed but NOT damage (it seems?). 
-        // Wait, weapon.js: spawnEnemyBullet(enemy.x, ..., 0, 300)
-        // It doesn't pass damage!
+        // First 15s: hard-cap enemy bullet output to prevent opening bullet rain.
+        if (battleTime < 15) {
+            const nowSec = Math.floor(battleTime);
+            if (nowSec !== this.openingFireWindowStart) {
+                this.openingFireWindowStart = nowSec;
+                this.openingFireCount = 0;
+            }
 
-        // I should update weapon.js to pass damage too, or use a default.
-        // Let's set a default damage for now, or assume config has it.
+            let capPerSec = 3;
+            if (battleTime >= 5) capPerSec = 5;
+            if (battleTime >= 10) capPerSec = 7;
+            if (this.openingFireCount >= capPerSec) {
+                return;
+            }
+            this.openingFireCount += 1;
+        }
 
-        const damage = config.damage || 10;
+        const earlySoftScale = battleTime < 15 ? (0.75 + (battleTime / 15) * 0.25) : 1;
+        const finalSpeed = Math.max(120, speed * earlySoftScale);
+        const damage = Math.max(1, Math.floor((config.damage || 10) * earlySoftScale));
+        // Enemy strategy angle uses "0 = downward". Convert to bullet angle space ("0 = right").
+        const normalizedAngle = Number.isFinite(angle) ? angle : 0;
+        const moveAngle = (config && config.absoluteAngle) ? normalizedAngle : (normalizedAngle + 90);
         const bounds = {
             minX: -100,
             maxX: GameConfig.Screen.width + 100,
@@ -467,7 +560,10 @@ export default class BattleScene extends BaseScene {
             maxY: (this.sceneManager.game.logicHeight || GameConfig.Screen.height) + 100
         };
         const bulletConfig = { ...config, bounds };
-        const bullet = new Bullet(x, y, angle, speed, damage, true, bulletConfig);
+        if (Object.prototype.hasOwnProperty.call(bulletConfig, 'absoluteAngle')) {
+            delete bulletConfig.absoluteAngle;
+        }
+        const bullet = new Bullet(x, y, moveAngle, finalSpeed, damage, true, bulletConfig);
         this.bullets.push(bullet);
     }
 
@@ -486,7 +582,7 @@ export default class BattleScene extends BaseScene {
 
         this.supplyCrates.push(new SupplyCrate(x, y, value));
 
-        this.spawnFloatingText('补给已抵达!', x, y - 50, '#ffcc00', 40);
+        this.spawnFloatingText('补给箱已到达！', x, y - 50, '#ffcc00', 40);
         audioManager.play('upgrade'); // Use upgrade sound for notify
         console.log(`Supply Drop: ${value} Gold at ${x},${y}`);
     }
@@ -497,22 +593,22 @@ export default class BattleScene extends BaseScene {
         this.obstacles.push(new Obstacle(x, -100, type));
     }
 
-    endGame(victory = false) {
+    endGame(victory = false, delayMs = 2000) {
         if (this.gameEnded) return;
         this.gameEnded = true;
         
         if (victory) {
-            // 胜利 - 母舰成功跃迁
-            console.log('VICTORY - 母舰跃迁成功！');
+            // 閼虫粌鍩?- 濮ｅ秷鍩岄幋鎰鐠哄啳绺?
+            console.log('VICTORY - Mothership jump complete!');
             this.effectManager.spawnFloatingText(
-                '跃迁成功！人类得救了！', 
+                '跃迁完成！人类得以存续！', 
                 GameConfig.Screen.width/2, 
                 GameConfig.Screen.height/2, 
                 '#00ff00', 
                 50
             );
         } else {
-            // 失败
+            // 婢惰精瑙?
             console.log('DEFEAT');
         }
         
@@ -537,10 +633,10 @@ export default class BattleScene extends BaseScene {
             dataManager.saveWreck(this.player.x, this.player.y, wreckageGold);
         }
 
-        // 记录局外成长
+        // Record meta progression.
         const gameResult = {
             victory: victory,
-            kills: this.score / 10, // 估算击杀数（假设每个敌人10分）
+            kills: this.score / 10, // 娴兼壆鐣婚崙缁樻絻閺佸府绱欓崑鍥啎濮ｅ繋閲滈弫灞兼眽10閸掑棴绱?
             survivalTime: this.waveManager.levelTime,
             playerHpPercent: this.player ? this.player.hp / this.player.maxHp : 0,
             blueprintsCommon: victory ? 30 + Math.floor(this.waveManager.levelTime / 10) : 10,
@@ -549,12 +645,12 @@ export default class BattleScene extends BaseScene {
         };
         metaProgression.recordGameEnd(gameResult);
         
-        // 检查新解锁
+        // 濡偓閺屻儲鏌婄憴锝夋敚
         const newUnlocks = metaProgression.checkAllUnlocks();
         if (newUnlocks.length > 0) {
             newUnlocks.forEach(fighterId => {
                 this.effectManager.spawnFloatingText(
-                    `解锁新战机: ${fighterId}!`, 
+                    '已解锁新战机：' + fighterId + '！',
                     GameConfig.Screen.width/2, 
                     GameConfig.Screen.height/2 - 100, 
                     '#ffd700', 
@@ -566,7 +662,7 @@ export default class BattleScene extends BaseScene {
         // Save
         dataManager.addGold(totalGold);
 
-        // 延迟后显示结果界面
+        // Show result screen after delay.
         setTimeout(() => {
             this.sceneManager.switchScene('RESULT', {
                 victory: victory,
@@ -576,7 +672,7 @@ export default class BattleScene extends BaseScene {
                 fighterId: this.player ? this.player.fighterId : null,
                 buildSummary: this.skillManager ? this.skillManager.getBuildSummary() : null
             });
-        }, 2000);
+        }, Math.max(0, delayMs));
     }
 
     checkCollisions() {
@@ -585,7 +681,8 @@ export default class BattleScene extends BaseScene {
             if (!b.active) return;
             if (b.isEnemy) return;
             this.enemies.forEach(e => {
-                if (!e.active) return;
+                if (!e.active || !b.active) return;
+                if ((e.spawnGraceTimer || 0) > 0) return;
                 const dx = b.x - e.x;
                 const dy = b.y - e.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
@@ -598,7 +695,7 @@ export default class BattleScene extends BaseScene {
                     const hpPercent = e.hp / e.maxHp;
                     if (this.player.executionThreshold && hpPercent <= this.player.executionThreshold) {
                         e.hp = 0; // Instant kill
-                        this.effectManager.spawnFloatingText('处决!', e.x, e.y - 50, '#ff0000', 30);
+                        this.effectManager.spawnFloatingText('处决', e.x, e.y - 50, '#ff0000', 30);
                         this.effectManager.hitStop(0.05);
                     } else {
                         if (e.isBoss && typeof e.takeDamage === 'function') {
@@ -625,7 +722,7 @@ export default class BattleScene extends BaseScene {
                         if (this.doomsdayActive) s *= 2;
                         this.score += s;
                         
-                        // 根据敌人类型掉落
+                        // 閺嶈宓侀弫灞兼眽缁鐎烽幒澶庢儰
                         let enemyType = 'normal';
                         if (e.isBoss) enemyType = 'boss';
                         else if (e.isElite) enemyType = 'elite';
@@ -665,7 +762,7 @@ export default class BattleScene extends BaseScene {
                     this.wreckage.takeDamage(b.damage);
                     if (!this.wreckage.active) {
                         // Show reward toast
-                        this.spawnFloatingText(`回收黑匣子! +${this.wreckage.gold}金币`, GameConfig.Screen.width / 2, 150, '#ff9f43', 40);
+                        this.spawnFloatingText(`回收黑匣子 +${this.wreckage.gold} 金币`, GameConfig.Screen.width / 2, 150, '#ff9f43', 40);
                     }
                 }
             }
@@ -735,6 +832,7 @@ export default class BattleScene extends BaseScene {
         if (this.player && this.player.hp > 0) {
             this.enemies.forEach(e => {
                 if (!e.active) return;
+                if ((e.spawnGraceTimer || 0) > 0) return;
                 const dx = e.x - this.player.x;
                 const dy = e.y - this.player.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
@@ -765,20 +863,21 @@ export default class BattleScene extends BaseScene {
         if (this.mothership && this.mothership.isAlive) {
             this.enemies.forEach(e => {
                 if (!e.active) return;
+                if ((e.spawnGraceTimer || 0) > 0) return;
                 const dx = e.x - this.mothership.x;
                 const dy = e.y - this.mothership.y;
                 const dist = Math.sqrt(dx*dx + dy*dy);
                 
                 if (dist < (e.width + this.mothership.width) / 2) {
-                    // 敌人撞击母舰！
+                    // Enemy collides with mothership.
                     e.active = false;
                     this.mothership.takeDamage(e.damage * 2);
                     
-                    // 强烈视觉反馈
+                    // 瀵櫣鍎撶憴鍡氼潕閸欏秹顩?
                     if (this.effectManager) {
                         this.effectManager.shake(20, 0.5);
                         this.effectManager.spawnFloatingText(
-                            '母舰受击!', 
+                            '母舰遭受撞击', 
                             this.mothership.x, 
                             this.mothership.y - 100, 
                             '#ff0000', 
@@ -876,7 +975,7 @@ export default class BattleScene extends BaseScene {
         this.bullets.forEach(o => o.render(ctx));
         if (this.player) this.player.render(ctx);
         
-        // Render Mothership (母舰 - 玩家保护的目标)
+        // Render Mothership (primary defense objective).
         if (this.mothership) {
             this.mothership.render(ctx);
         }
@@ -886,38 +985,41 @@ export default class BattleScene extends BaseScene {
 
         // Render Combo UI
         if (this.effectManager) {
-            // 连击UI已移除（界面简化）
+            // 鏉╃偛鍤甎I瀹歌尙些闂勩倧绱欓悾宀勬桨缁犫偓閸栨牭绱?
         }
 
-        // ========== 能量系统UI ==========
-        // 玩家能量条和副武器技能按钮
+        // ========== 閼充粙鍣虹化鑽ょ埠UI ==========
+        // Mothership countdown and state.
         if (this.player) {
             this.player.renderUI(ctx, GameConfig.Screen.width, this.sceneManager.game.logicHeight);
             
-            // 副武器技能按钮（右下角）
+            // 閸擃垱顒熼崳銊﹀Η閼宠姤瀵滈柦顕嗙礄閸欏厖绗呯憴鎺炵礆
             this.renderSecondarySkillButton(ctx);
         }
 
-        // 母舰倒计时和状态
+        // Top battle UI (countdown-focused).
         if (this.mothership && this.mothership.isAlive) {
             this.mothership.renderCountdownUI(ctx, width, height);
         }
 
-        // Render Battle UI (Top HUD) - 简化版：只保留倒计时
+        // Render Battle UI (simplified countdown).
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 36px Arial';
         ctx.textAlign = 'center';
 
-        // Survival Timer (Center Top) - 核心元素1：倒计时
+        // Survival timer (center top).
         const t = this.waveManager.levelTime || 0;
-        const remainingTime = Math.max(0, 90 - t);
+        const durationSec = this.waveManager && this.waveManager.getDurationSec
+            ? this.waveManager.getDurationSec()
+            : 90;
+        const remainingTime = Math.max(0, durationSec - t);
         const m = Math.floor(remainingTime / 60).toString().padStart(2, '0');
         const s = Math.floor(remainingTime % 60).toString().padStart(2, '0');
         
-        // 最后20秒变红色警示
+        // Last 20s warning tint.
         if (remainingTime <= 20) {
             ctx.fillStyle = '#e74c3c';
-            // 添加脉动效果
+            // 濞ｈ濮為懘澶婂З閺佸牊鐏?
             const pulse = 0.7 + Math.sin(Date.now() / 200) * 0.3;
             ctx.shadowColor = '#e74c3c';
             ctx.shadowBlur = 20 * pulse;
@@ -928,18 +1030,17 @@ export default class BattleScene extends BaseScene {
         
         ctx.fillText(`${m}:${s}`, GameConfig.Screen.width / 2, this.hudY + 30); // Lowered slightly
         
-        // 倒计时标签
+        // Countdown label.
         ctx.font = '14px Arial';
         ctx.fillStyle = '#aaa';
         ctx.shadowBlur = 0;
-        ctx.fillText('保护母舰', GameConfig.Screen.width / 2, this.hudY + 60); // Spaced out
+        ctx.fillText('剩余时间', GameConfig.Screen.width / 2, this.hudY + 60); // Spaced out
 
         this.renderTopStatusPanel(ctx, width);
+        this.renderMissionEconomyPanel(ctx, width, height);
 
-        const directorHint = this.waveManager && this.waveManager.getCurrentHint ? this.waveManager.getCurrentHint() : null;
-        if (directorHint) {
-            this.renderDirectorHint(ctx, directorHint, width);
-        }
+        // Director hint banner moved out of center to reduce HUD clutter.
+        this.renderDirectorDebugHud(ctx, width);
 
         const boss = this.enemies.find(en => en && en.active && en.isBoss);
         if (boss) {
@@ -964,18 +1065,125 @@ export default class BattleScene extends BaseScene {
             ctx.restore();
         });
 
-        // 技能选择已改为自动模式，不显示弹窗
+        // Skill selection is now mostly auto mode.
         if (this.isSelectingSkill && this.skillModal) {
             this.skillModal.render(ctx);
         }
         
-        // 恢复画布状态（对应render方法开头的ctx.save）
+        // Restore canvas state (paired with top-level ctx.save).
         ctx.restore();
     }
 
     /**
-     * 显示技能选择界面（SkillManager调用）
+     * Show skill selection UI (called by SkillManager).
      */
+    renderDebugOverlay(ctx, width, height) {
+        if (!GameConfig.Debug || !GameConfig.Debug.hitboxOverlay) return;
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.font = '12px Arial';
+
+        const drawBtn = (btn, label, color = '#00ff99') => {
+            if (!btn) return;
+            this.drawDebugRect(ctx, btn.x, btn.y, btn.width, btn.height, label, color);
+        };
+
+        drawBtn(this.btnPause, 'pause', '#7df9ff');
+
+        if (this.isPaused) {
+            drawBtn(this.btnContinue, 'continue');
+            drawBtn(this.btnShare, 'share', '#63b3ed');
+            drawBtn(this.btnSetting, 'setting', '#f6ad55');
+            drawBtn(this.btnEnd, 'abandon', '#fc8181');
+            drawBtn(this.btnClose, 'close', '#e2e8f0');
+        }
+
+        if (this.player && this.player.abilityBtn) {
+            const btn = this.player.abilityBtn;
+            const radius = (btn.radius || 0) * 1.2;
+            if (radius > 0) {
+                ctx.strokeStyle = '#f6e05e';
+                ctx.beginPath();
+                ctx.arc(btn.x, btn.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = '#f6e05e';
+                ctx.fillText('技能', btn.x + radius + 6, btn.y - 6);
+            }
+        }
+
+        const showTouch = !GameConfig.Debug || GameConfig.Debug.touchPointOverlay !== false;
+        const touch = this.debugLastTouch;
+        if (showTouch && touch && (Date.now() - touch.ts) < 1200) {
+            const r = GameConfig.Debug.touchPointRadius || 18;
+            ctx.strokeStyle = '#ff4d6d';
+            ctx.beginPath();
+            ctx.arc(touch.x, touch.y, r, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = '#ff4d6d';
+            ctx.fillText(`${touch.type} (${Math.floor(touch.x)}, ${Math.floor(touch.y)})`, touch.x + r + 6, touch.y - 6);
+        }
+
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(width - 180, 12, 168, 44);
+        ctx.fillStyle = '#7df9ff';
+        ctx.fillText('调试碰撞框已开启', width - 170, 30);
+        ctx.fillStyle = '#cbd5e0';
+        ctx.fillText('三指点击：开关', width - 170, 48);
+
+        ctx.restore();
+    }
+
+    drawDebugRect(ctx, x, y, w, h, label, color) {
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) return;
+        ctx.strokeStyle = color;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = color;
+        ctx.fillText(label, x + 4, y + 14);
+    }
+
+    canOpenSkillSelectionNow() {
+        if (this.gameEnded || this.isPaused || this.isSelectingSkill) return false;
+        if (!this.player) return false;
+
+        const t = (this.waveManager && Number.isFinite(this.waveManager.levelTime))
+            ? this.waveManager.levelTime
+            : 0;
+        if (t < 6) return false;
+
+        const hpRate = this.player.maxHp > 0 ? this.player.hp / this.player.maxHp : 1;
+        if (hpRate < 0.45) return false;
+
+        const activeEnemies = Array.isArray(this.enemies)
+            ? this.enemies.filter((e) => e && e.active).length
+            : 0;
+        if (activeEnemies > 3) return false;
+
+        const enemyBullets = Array.isArray(this.bullets)
+            ? this.bullets.filter((b) => b && b.active && b.isEnemy).length
+            : 0;
+        if (enemyBullets > 12) return false;
+
+        const bossAlive = !!(this.currentBoss && this.currentBoss.active);
+        if (bossAlive) return false;
+
+        return true;
+    }
+
+    isEnemyInFireWindow(enemy) {
+        if (!enemy) return false;
+        const width = GameConfig.Screen.width;
+        const height = this.sceneManager && this.sceneManager.game
+            ? this.sceneManager.game.logicHeight
+            : GameConfig.Screen.height;
+        return (
+            enemy.x > -40 &&
+            enemy.x < width + 40 &&
+            enemy.y > 260 &&
+            enemy.y < height * 0.88
+        );
+    }
+
     showSkillSelection(options) {
         console.log("Scene: Show Skill Selection");
         this.isPaused = true;
@@ -993,7 +1201,7 @@ export default class BattleScene extends BaseScene {
     }
 
     /**
-     * 兼容旧方法名
+     * 閸忕厧顔愰弮褎鏌熷▔鏇炴倳
      */
     showLevelUp() {
         this.showSkillSelection(this.skillManager ? this.skillManager.getSkillOptions() : []);
@@ -1020,8 +1228,8 @@ export default class BattleScene extends BaseScene {
     }
 
     onBossSpawned(boss) {
-        this.spawnFloatingText('🚨 泰坦战舰来袭！', GameConfig.Screen.width / 2, 240, '#ff3b30', 40);
-        this.spawnFloatingText('优先摧毁机库 → 暴露核心弱点', GameConfig.Screen.width / 2, 290, '#ffffff', 26);
+        this.spawnFloatingText('首领来袭！', GameConfig.Screen.width / 2, 240, '#ff3b30', 40);
+        this.spawnFloatingText('优先击毁：机库 -> 炮塔 -> 核心', GameConfig.Screen.width / 2, 290, '#ffffff', 24);
         this.currentBoss = boss;
     }
 
@@ -1038,7 +1246,7 @@ export default class BattleScene extends BaseScene {
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 18px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(boss.name || 'BOSS', x, y - 16);
+        ctx.fillText(boss.name || '首领', x, y - 16);
 
         const hpPercent = boss.maxHp > 0 ? boss.hp / boss.maxHp : 0;
         ctx.fillStyle = 'rgba(255,255,255,0.2)';
@@ -1066,8 +1274,47 @@ export default class BattleScene extends BaseScene {
         ctx.textAlign = 'right';
         ctx.fillStyle = '#aaa';
         ctx.font = '14px Arial';
-        ctx.fillText(`机库:${hangars} 主炮:${turrets} ${coreExposed ? '核心:暴露' : '核心:封闭'}`, x + barWidth, y - 16);
+        ctx.fillText('机库:' + hangars + ' 炮塔:' + turrets + ' ' + (coreExposed ? '核心:暴露' : '核心:锁定'), x + barWidth, y - 16);
+        this.renderBossPriorityMarkers(ctx, x, y - 58, hangars, turrets, coreExposed);
 
+        ctx.restore();
+    }
+
+    renderBossPriorityMarkers(ctx, x, y, hangars, turrets, coreExposed) {
+        const markers = [
+            {
+                label: `机库 ${hangars}`,
+                color: hangars > 0 ? '#f59e0b' : '#6b7280',
+                active: hangars > 0
+            },
+            {
+                label: `炮塔 ${turrets}`,
+                color: turrets > 0 ? '#3b82f6' : '#6b7280',
+                active: turrets > 0
+            },
+            {
+                label: coreExposed ? '核心 已暴露' : '核心 未暴露',
+                color: coreExposed ? '#ef4444' : '#6b7280',
+                active: coreExposed
+            }
+        ];
+
+        ctx.save();
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        let cursorX = x;
+        markers.forEach((mk) => {
+            const w = Math.max(88, Math.min(136, ctx.measureText(mk.label).width + 20));
+            const h = 20;
+            ctx.fillStyle = mk.active ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)';
+            ctx.fillRect(cursorX, y, w, h);
+            ctx.strokeStyle = mk.color;
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(cursorX, y, w, h);
+            ctx.fillStyle = mk.color;
+            ctx.fillText(mk.label, cursorX + 8, y + 14);
+            cursorX += w + 6;
+        });
         ctx.restore();
     }
 
@@ -1100,7 +1347,7 @@ export default class BattleScene extends BaseScene {
         ctx.fillStyle = '#ffffff';
         ctx.font = '12px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(`HP ${Math.ceil(this.player.hp)}/${this.player.maxHp}`, barX, panelY + 10);
+        ctx.fillText(`生命 ${Math.ceil(this.player.hp)}/${this.player.maxHp}`, barX, panelY + 10);
 
         // ENERGY
         ctx.fillStyle = '#00ccff';
@@ -1112,6 +1359,9 @@ export default class BattleScene extends BaseScene {
 
         // Act badge (right)
         const act = this.waveManager && this.waveManager.getCurrentAct ? this.waveManager.getCurrentAct() : 1;
+        const activeEnemyCount = Array.isArray(this.enemies)
+            ? this.enemies.filter((e) => e && e.active && !e.isBoss).length
+            : 0;
         const badgeW = 94;
         const badgeX = width - badgeW - 18;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
@@ -1121,11 +1371,116 @@ export default class BattleScene extends BaseScene {
         ctx.fillStyle = '#00d2d3';
         ctx.font = 'bold 14px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`ACT ${act}`, badgeX + badgeW / 2, panelY + 24);
+        ctx.fillText(`阶段 ${act}`, badgeX + badgeW / 2, panelY + 24);
         ctx.fillStyle = '#95a5a6';
         ctx.font = '12px Arial';
-        ctx.fillText('战场阶段', badgeX + badgeW / 2, panelY + 44);
+        ctx.fillText('战斗进程', badgeX + badgeW / 2, panelY + 44);
+        ctx.fillStyle = '#feca57';
+        ctx.font = '11px Arial';
+        ctx.fillText(`敌机 ${activeEnemyCount}`, badgeX + badgeW / 2, panelY + 58);
 
+        ctx.restore();
+    }
+
+    renderMissionEconomyPanel(ctx, width, height) {
+        const projection = this.getRunProjection();
+        const hint = this.getUnlockProgressHint();
+        const panelW = Math.min(340, Math.floor(width * 0.48));
+        const panelH = 48;
+        const x = 18;
+        const y = Math.min(height - 200, this.hudY + 158);
+
+        this.missionPulse += 0.05;
+        const pulse = 0.55 + Math.sin(this.missionPulse) * 0.12;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fillRect(x, y, panelW, panelH);
+        ctx.strokeStyle = `rgba(0, 210, 211, ${pulse})`;
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(x, y, panelW, panelH);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#dff9fb';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText(`结算 +${projection.nowGold} 金币`, x + panelW / 2, y + 18);
+
+        ctx.fillStyle = '#feca57';
+        ctx.font = '12px Arial';
+        ctx.fillText(
+            `终局额外 +${projection.victoryBonusGold} 金币  蓝图 +${projection.victoryCommon}/${projection.victoryRare}/${projection.victoryLegendary}`,
+            x + panelW / 2,
+            y + 34
+        );
+        if ((this.waveManager && this.waveManager.levelTime || 0) < 16) {
+            ctx.fillStyle = '#a5b1c2';
+            ctx.font = '12px Arial';
+            ctx.fillText(hint, x + panelW / 2, y + panelH + 16);
+        }
+        ctx.restore();
+    }
+
+    getRunProjection() {
+        const durationSec = this.waveManager && this.waveManager.getDurationSec
+            ? this.waveManager.getDurationSec()
+            : 90;
+        const t = this.waveManager && Number.isFinite(this.waveManager.levelTime)
+            ? this.waveManager.levelTime
+            : 0;
+        const nowGold = Math.floor(t / 10) + Math.floor((this.score || 0) / 100);
+        const victoryGold = Math.floor(durationSec / 10) + Math.floor((this.score || 0) / 100);
+        return {
+            nowGold,
+            victoryBonusGold: Math.max(0, victoryGold - nowGold),
+            victoryCommon: 30 + Math.floor(durationSec / 10),
+            victoryRare: 5 + Math.floor(durationSec / 60),
+            victoryLegendary: 1
+        };
+    }
+
+    getUnlockProgressHint() {
+        const data = metaProgression.getDisplayData ? metaProgression.getDisplayData() : null;
+        if (!data || !data.fighters || !data.stats) return '完成战斗可获得蓝图并推进战机解锁';
+
+        const stats = data.stats;
+        const fighters = data.fighters;
+        if (fighters['F-22'] && !fighters['F-22'].unlocked) {
+            const now = Math.floor((stats.totalKills || 0) + (this.score || 0) / 10);
+            return `J-20 进阶目标：累计击杀 ${now}/${fighters['F-22'].unlockCost}`;
+        }
+        if (fighters['F-16'] && !fighters['F-16'].unlocked) {
+            const now = (stats.totalGames || 0) + 1;
+            return `F-16 解锁目标：完成对局 ${now}/${fighters['F-16'].unlockCost}`;
+        }
+        if (fighters['Su-57'] && !fighters['Su-57'].unlocked) {
+            return `Su-57 解锁目标：满血通关 ${stats.fullHealthWins || 0}/${fighters['Su-57'].unlockCost}`;
+        }
+
+        return '已解锁全部战机，建议优先升级主力战机';
+    }
+
+    renderEnemyThreatIndicators(ctx, width, height) {
+        if (!Array.isArray(this.enemies) || this.enemies.length === 0) return;
+
+        const topBandY = this.hudY + 154;
+        const maxY = height - 120;
+        ctx.save();
+        this.enemies.forEach((enemy) => {
+            if (!enemy || !enemy.active) return;
+            if (enemy.y >= 28 && enemy.y <= maxY) return;
+            const clampedX = Math.max(24, Math.min(width - 24, enemy.x));
+            const y = enemy.y < 28 ? topBandY : maxY;
+            const color = enemy.config && enemy.config.color ? enemy.config.color : '#ff6b6b';
+            const dir = enemy.y < 28 ? 1 : -1;
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(clampedX, y + 10 * dir);
+            ctx.lineTo(clampedX - 7, y - 7 * dir);
+            ctx.lineTo(clampedX + 7, y - 7 * dir);
+            ctx.closePath();
+            ctx.fill();
+        });
         ctx.restore();
     }
 
@@ -1152,21 +1507,63 @@ export default class BattleScene extends BaseScene {
         ctx.restore();
     }
 
+    renderDirectorDebugHud(ctx, width) {
+        if (!GameConfig.Debug || !GameConfig.Debug.hitboxOverlay) return;
+        if (!this.waveManager || !this.waveManager.getDirectorState) return;
+
+        const state = this.waveManager.getDirectorState();
+        if (!state) return;
+
+        const panelW = 240;
+        const panelH = 122;
+        const x = width - panelW - 18;
+        const y = this.hudY + 150;
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+        ctx.fillRect(x, y, panelW, panelH);
+        ctx.strokeStyle = 'rgba(0, 210, 211, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, panelW, panelH);
+
+        ctx.fillStyle = '#7df9ff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('导演系统调试', x + 10, y + 16);
+
+        const budget = `${state.threatBudget.toFixed(1)}/${state.maxThreatBudget}`;
+        const spendIn = Math.max(0, state.nextSpendIn || 0).toFixed(2);
+        const lines = [
+            `阶段: ${state.act} (${state.beatLabel || '-'})`,
+            `预算: ${budget}`,
+            `收入: +${state.incomePerSec.toFixed(1)}/秒`,
+            `敌人: ${state.activeEnemies}  队列: ${state.queuedSpawns}`,
+            `下次投放: ${spendIn}秒  角色: ${state.lastRole || '-'}`
+        ];
+
+        ctx.fillStyle = '#d9e6f2';
+        ctx.font = '12px Arial';
+        for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i], x + 10, y + 36 + i * 16);
+        }
+        ctx.restore();
+    }
+
     /**
-     * 渲染副武器技能按钮（已禁用 - 能量系统已删除）
+     * Render secondary skill button (disabled - energy system removed).
      */
     renderSecondarySkillButton(ctx) {
-        // 能量系统已删除，此按钮不再渲染
-        // 如需恢复副武器系统，需先在Player.js中重新添加secondarySkill属性
+        // Energy system removed, secondary button is hidden.
+        // Restore after re-adding secondarySkill in Player.js if needed.
         return;
     }
 
     /**
-     * 使用副武器技能（已禁用 - 能量系统已删除）
+     * Activate secondary skill (disabled - energy system removed).
      */
     activateSecondarySkill() {
-        // 能量系统已删除，副武器系统禁用
-        console.log('副武器系统已禁用（能量系统已删除）');
+        // Energy system removed, secondary skill stays disabled.
+        console.log('Secondary weapon system disabled (energy system removed)');
         return;
     }
 
@@ -1178,9 +1575,9 @@ export default class BattleScene extends BaseScene {
         
         if (this.player.fighterId === 'J-20') {
             activated = this.player.fighter.activateStealth();
-            abilityName = '隐身模式';
+            abilityName = '隐身突防';
         } else if (this.player.fighterId === 'F-22') {
-            // 冲刺方向设为当前移动方向或向上
+            // Dash direction currently defaults upward.
             const dirX = 0;
             const dirY = -1;
             activated = this.player.fighter.activateDash(dirX, dirY);
@@ -1193,7 +1590,7 @@ export default class BattleScene extends BaseScene {
         if (activated) {
             if (this.effectManager) {
                 this.effectManager.spawnFloatingText(
-                    abilityName + '启动!',
+                    `${abilityName} 已启动`,
                     this.player.x,
                     this.player.y - 60,
                     '#00ccff',
@@ -1253,7 +1650,7 @@ export default class BattleScene extends BaseScene {
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#90a5bc';
         ctx.font = '18px Arial';
-        ctx.fillText('TACTICAL PAUSE', cx, startY + 118);
+        ctx.fillText('暂停中', cx, startY + 118);
         ctx.fillStyle = 'rgba(0, 210, 211, 0.4)';
         ctx.fillRect(startX + 42, startY + 136, panelW - 84, 2);
         ctx.restore();
@@ -1274,12 +1671,11 @@ export default class BattleScene extends BaseScene {
         ctx.fillStyle = '#dfe6e9';
         ctx.font = 'bold 16px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('战场状态', statusX + 16, statusY + 26);
+        ctx.fillText('战况状态', statusX + 16, statusY + 26);
 
         const rows = [
-            { label: '生存时间', value: `${elapsed}s`, color: '#74b9ff' },
-            { label: '当前得分', value: `${score}`, color: '#55efc4' },
-            { label: '战机耐久', value: `${hp}`, color: '#ff7675' }
+            { label: '当前得分', value: String(score), color: '#55efc4' },
+            { label: '战机耐久', value: String(hp), color: '#ff7675' }
         ];
 
         rows.forEach((row, i) => {
@@ -1308,7 +1704,7 @@ export default class BattleScene extends BaseScene {
         ctx.textAlign = 'center';
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.font = '14px Arial';
-        ctx.fillText('请选择操作', cx, startY + 360);
+        ctx.fillText('暂停期间不会消耗时间与资源', cx, startY + 360);
         ctx.restore();
 
         if (this.btnContinue) this.btnContinue.render(ctx);
@@ -1316,17 +1712,26 @@ export default class BattleScene extends BaseScene {
         if (this.btnSetting) this.btnSetting.render(ctx);
         if (this.btnEnd) this.btnEnd.render(ctx);
         if (this.btnClose) this.btnClose.render(ctx);
+
+        this.renderDebugOverlay(ctx, w, h);
     }
 
     handleInput(type, x, y) {
+        this.debugLastTouch = {
+            x: x,
+            y: y,
+            type: type,
+            ts: Date.now()
+        };
+
         if (this.isSelectingSkill && this.skillModal) {
             if (this.skillModal.handleInput(type, x, y)) {
                 return;
             }
         }
 
-        // ========== 摇杆区域检测 ==========
-        // 检查触摸点是否在摇杆区域内（避免摇杆拖动触发高度变化）
+        // ========== Joystick Area Check ==========
+        // 濡偓閺屻儴袝閹藉摜鍋ｉ弰顖氭儊閸︺劍鎲為弶鍡楀隘閸╃喎鍞撮敍鍫ヤ缉閸忓秵鎲為弶鍡樺珛閸斻劏袝閸欐垿鐝惔锕€褰夐崠鏍电礆
         let isInJoystickArea = false;
         if (this.joystick) {
             const joyX = this.joystick.x || (GameConfig.Screen.width - 120);
@@ -1338,16 +1743,41 @@ export default class BattleScene extends BaseScene {
             }
         }
         
-        // 高度层滑动控制 (已移除)
+        // Altitude swipe control removed.
         // if (!isInJoystickArea) { ... }
 
         if (this.isPaused) {
-            // 如果暂停，优先处理暂停菜单的按钮点击
+            // 婵″倹鐏夐弳鍌氫粻閿涘奔绱崗鍫濐槱閻炲棙娈忛崑婊嗗綅閸楁洜娈戦幐澶愭尦閻愮懓鍤?
             const pauseButtons = [this.btnContinue, this.btnShare, this.btnSetting, this.btnEnd, this.btnClose];
-            for (let btn of pauseButtons) {
-                if (btn && btn.handleInput(type, x, y)) return;
+            if (type === 'touchstart') {
+                this.pausePressedButton = null;
+                for (const btn of pauseButtons) {
+                    if (btn && btn.checkClicked(x, y)) {
+                        this.pausePressedButton = btn;
+                        break;
+                    }
+                }
+                return;
             }
-            return; // 暂停时阻止其他输入
+
+            if (type === 'touchend') {
+                let targetBtn = this.pausePressedButton;
+                if (!targetBtn) {
+                    for (const btn of pauseButtons) {
+                        if (btn && btn.checkClicked(x, y)) {
+                            targetBtn = btn;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetBtn && targetBtn.checkClicked(x, y) && typeof targetBtn.onClick === 'function') {
+                    targetBtn.onClick();
+                }
+                this.pausePressedButton = null;
+                return;
+            }
+            return; // Block gameplay input while paused.
         }
 
         // Priority 1: UI Components (Pause, Joystick, etc)
@@ -1360,7 +1790,7 @@ export default class BattleScene extends BaseScene {
                 }
             }
             
-            // ========== 战机特技按钮检测 ==========
+            // ========== Fighter Ability Button Check ==========
             if (this.player && this.player.abilityBtn) {
                 const btn = this.player.abilityBtn;
                 const dx = x - btn.x;
@@ -1399,6 +1829,7 @@ export default class BattleScene extends BaseScene {
         const height = this.sceneManager.game.logicHeight;
 
         if (this.isPaused) {
+            this.pausePressedButton = null;
             const panelW = Math.min(500, width - 48);
             const panelH = Math.min(720, height - 80);
             const cx = width / 2;
@@ -1410,30 +1841,33 @@ export default class BattleScene extends BaseScene {
             const firstBtnY = startY + 392;
             const btnX = cx - btnWidth / 2;
 
-            this.btnContinue = new Button(btnX, firstBtnY, btnWidth, btnHeight, '▶ 继续作战');
+            this.btnContinue = new Button(btnX, firstBtnY, btnWidth, btnHeight, '继续作战');
             this.btnContinue.setStyle('#12b39a', '#03241f', 22, 8).setCallback(() => this.togglePause());
 
             this.btnShare = new Button(btnX, firstBtnY + (btnHeight + btnSpacing), btnWidth, btnHeight, '分享战报');
             this.btnShare.setStyle('#1f8de3', '#ffffff', 22, 8).setCallback(() => {
                 if (typeof wx !== 'undefined' && wx.shareAppMessage) {
-                    wx.shareAppMessage({ title: `我在太空幸存者中守卫了${Math.floor(this.waveManager.levelTime)}秒！` });
+                    wx.shareAppMessage({ title: `我在《太空幸存者》坚持了 ${Math.floor(this.waveManager.levelTime)} 秒！` });
                 } else {
-                    this.spawnFloatingText('当前平台暂不支持分享', GameConfig.Screen.width / 2, 220, '#feca57', 24);
+                    this.spawnFloatingText('当前平台不支持分享', GameConfig.Screen.width / 2, 220, '#feca57', 24);
                 }
             });
 
             this.btnSetting = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 2, btnWidth, btnHeight, '系统设置');
             this.btnSetting.setStyle('#6d7a85', '#ffffff', 22, 8).setCallback(() => {
-                this.spawnFloatingText('设置功能开发中', GameConfig.Screen.width / 2, 220, '#74b9ff', 24);
+                this.spawnFloatingText('设置面板开发中', GameConfig.Screen.width / 2, 220, '#74b9ff', 24);
             });
 
             this.btnEnd = new Button(btnX, firstBtnY + (btnHeight + btnSpacing) * 3, btnWidth, btnHeight, '放弃任务');
             this.btnEnd.setStyle('#df3b3b', '#ffffff', 22, 8).setCallback(() => {
-                this.endGame();
+                this.isPaused = false;
+                this.pausePressedButton = null;
+                this.endGame(false, 0);
             });
 
             this.btnClose = null;
         } else {
+            this.pausePressedButton = null;
             this.btnContinue = null;
             this.btnEnd = null;
             this.btnShare = null;

@@ -1,130 +1,82 @@
-/**
- * Author: yangguangftlp@163.com
- * Date: 2026-01-31
- * Description: 主页场景 (HomeScene)，应用 RenderUtils 进行视觉打磨，并增加了个人中心入口。
- */
-
-import BaseScene from './baseScene.js';
+﻿import BaseScene from './baseScene.js';
 import { GameConfig } from '../config.js';
 import { dataManager } from '../manager/dataManager.js';
 import Player from '../object/faction/player/Player.js';
 import EquipmentPopup from '../ui/equipmentPopup.js';
 import RenderUtils from '../utils/renderUtils.js';
-import Button from '../object/ui/Button.js';
+
+const SLOT_CONFIG = [
+    { key: 'MainGun', label: '主炮' },
+    { key: 'Armor', label: '装甲' },
+    { key: 'Wingman', label: '僚机' },
+    { key: 'Radar', label: '雷达' }
+];
 
 export default class HomeScene extends BaseScene {
     constructor(sceneManager) {
         super(sceneManager);
-
         this.width = GameConfig.Screen.width;
         this.height = this.sceneManager.game.logicHeight || 1280;
 
-        // UI Components
-        this.btnStart = { x: 0, y: 0, w: 220, h: 80 };
-        this.uiComponents = [];
+        const safeTop = GameConfig.SafeArea.top || 20;
+        const safeLeft = Number.isFinite(GameConfig.SafeArea.left) ? GameConfig.SafeArea.left : 20;
+        const capsuleH = GameConfig.SafeArea.height || 38;
 
-        // Profile Button (Aligned with Menu Capsule)
-        const safeArea = GameConfig.SafeArea || { top: 20, left: 20, height: 32 };
-        const safeTop = safeArea.top || 20;
-        const safeLeft = (safeArea.left !== undefined) ? safeArea.left : 20;
-        const capsuleH = safeArea.height || 32;
-        // Square or Circle button
         this.btnProfile = { x: safeLeft, y: safeTop, w: capsuleH, h: capsuleH };
-
-        // Menu System (Removed - Moved to BattleScene)
-        // this.menuExpanded = false;
-        // this.btnMenu... 
-
-        // 装备槽位 (仍保留展示，作为快捷入口)
+        this.btnStart = { x: 0, y: 0, w: 240, h: 84 };
+        this.fighterTapZone = { x: 0, y: 0, w: 0, h: 0 };
         this.slotHitBoxes = [];
+
         this.equipPopup = new EquipmentPopup();
         this.activePopup = null;
-
-        // Player Model
         this.demoPlayer = new Player(this.width / 2, this.height / 2);
-
-        // 机库按钮
-        const w = this.width;
-        const h = this.height;
-        this.btnHangar = new Button(w / 2, h / 2 + 80, 160, 50, '机库');
-        this.btnHangar.setStyle('#2c3e50', '#fff', 20, 10).setCallback(() => {
-            this.sceneManager.switchScene('HANGAR');
-        });
-        this.uiComponents.push(this.btnHangar);
     }
 
     enter() {
         this.height = this.sceneManager.game.logicHeight;
 
-        // 动态布局
-        const cx = this.width / 2;
-        this.btnStart.x = cx - 110;
-        this.btnStart.y = this.height - 220;
+        this.btnProfile.y = GameConfig.SafeArea.top || 20;
+        this.btnProfile.w = GameConfig.SafeArea.height || 38;
+        this.btnProfile.h = GameConfig.SafeArea.height || 38;
 
-        // Update Profile Button Position Update (in case safe area loaded late)
-        const safeArea = GameConfig.SafeArea || { top: 20, height: 32 };
-        this.btnProfile.y = safeArea.top || 20;
-        this.btnProfile.w = safeArea.height || 32;
-        this.btnProfile.h = safeArea.height || 32;
+        this.btnStart.x = this.width / 2 - this.btnStart.w / 2;
+        this.btnStart.y = this.height - 170;
 
-        this.demoPlayer.y = this.height / 2 - 50;
-
-        console.log('HomeScene: Enter');
+        this.demoPlayer.x = this.width / 2;
+        this.demoPlayer.y = this.height * 0.56;
     }
 
     render(ctx) {
-        // 1. 绘制科幻背景 (深蓝渐变)
-        const grad = ctx.createLinearGradient(0, 0, 0, this.height);
-        grad.addColorStop(0, '#0f1020');
-        grad.addColorStop(1, '#1a1a2e');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, this.width, this.height);
-
-        // 2. 绘制网格线 (Holographic Grid)
-        this.renderGrid(ctx);
-
-        // 3. 标题
-        RenderUtils.drawGlowingText(ctx, '太空幸存者', this.width / 2, 180, 50, '#fff', '#00A8FF');
-
-        this.renderValueProposition(ctx);
-
-        // 4. 资源栏 (简化，整合到 Profile 旁或保留)
-        // 这里仅在右上角显示金币，作为 Top Bar
+        this.renderBackground(ctx);
         this.renderTopBar(ctx);
-
-        // 5. 战机展示
-        this.demoPlayer.render(ctx);
-        // Hint Text
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.font = '16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('点击更换战机', this.width / 2, this.demoPlayer.y + 60);
-
-        // 6. 装备槽位 (使用新样式)
-        this.renderEquipmentSlots(ctx);
-
-        // 7. 开始按钮 (使用新样式)
+        this.renderHeader(ctx);
+        this.renderFighterShowcase(ctx);
+        this.renderCommercialStrip(ctx);
+        this.renderEquipmentDeck(ctx);
         this.renderStartButton(ctx);
 
-        // 8. 弹窗
         if (this.activePopup) {
             this.activePopup.render(ctx);
         }
     }
 
-    renderGrid(ctx) {
+    renderBackground(ctx) {
+        const grad = ctx.createLinearGradient(0, 0, 0, this.height);
+        grad.addColorStop(0, '#0a1024');
+        grad.addColorStop(1, '#121935');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, this.width, this.height);
+
         ctx.save();
-        ctx.strokeStyle = 'rgba(0, 168, 255, 0.1)';
+        ctx.strokeStyle = 'rgba(0,168,255,0.12)';
         ctx.lineWidth = 1;
-        const step = 80;
-        // 垂直线
+        const step = 56;
         for (let x = 0; x <= this.width; x += step) {
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, this.height);
             ctx.stroke();
         }
-        // 水平线
         for (let y = 0; y <= this.height; y += step) {
             ctx.beginPath();
             ctx.moveTo(0, y);
@@ -135,160 +87,257 @@ export default class HomeScene extends BaseScene {
     }
 
     renderTopBar(ctx) {
-        // Profile Button (Left Top)
         const r = this.btnProfile.w / 2;
         const cx = this.btnProfile.x + r;
         const cy = this.btnProfile.y + r;
 
-        RenderUtils.fillRoundRect(ctx, this.btnProfile.x, this.btnProfile.y, this.btnProfile.w, this.btnProfile.h, r, '#555', '#fff', 2);
+        RenderUtils.fillRoundRect(
+            ctx,
+            this.btnProfile.x,
+            this.btnProfile.y,
+            this.btnProfile.w,
+            this.btnProfile.h,
+            r,
+            'rgba(255,255,255,0.12)',
+            'rgba(255,255,255,0.6)',
+            2
+        );
 
-        // 简单画一个人头示意
-        ctx.fillStyle = '#fff';
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        // Head
-        ctx.arc(cx, cy - r * 0.2, r * 0.4, 0, Math.PI * 2);
+        ctx.arc(cx, cy - r * 0.2, r * 0.34, 0, Math.PI * 2);
         ctx.fill();
-        // Body (Chest)
         ctx.beginPath();
-        ctx.arc(cx, cy + r * 0.9, r * 0.7, Math.PI, Math.PI * 2); // Bottom arc
+        ctx.arc(cx, cy + r * 0.9, r * 0.62, Math.PI, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
 
-        // 资源 (Right Top)
-        const goldVal = dataManager.getGold();
-        const goldStr = `💰 ${goldVal}`;
-        ctx.font = '24px Arial';
-        ctx.fillStyle = '#FFD700'; // Gold
-        ctx.textAlign = 'right';
-        // Align Text with Capsule center Y
+        const chipW = 208;
+        const chipH = 40;
+        const chipX = this.width - chipW - 16;
+        const chipY = this.btnProfile.y;
+        RenderUtils.fillRoundRect(
+            ctx,
+            chipX,
+            chipY,
+            chipW,
+            chipH,
+            20,
+            'rgba(0,0,0,0.42)',
+            'rgba(255,255,255,0.2)',
+            1
+        );
+
+        ctx.fillStyle = '#8ab4f8';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(goldStr, this.width - 20, cy);
-        ctx.textBaseline = 'alphabetic'; // Reset
+        ctx.fillText('金币', chipX + 18, chipY + chipH / 2);
+
+        ctx.fillStyle = '#ffd166';
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(String(dataManager.getGold()), chipX + 112, chipY + chipH / 2);
+
+        ctx.fillStyle = '#95a5a6';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('钻石', chipX + 132, chipY + chipH / 2);
+        ctx.fillStyle = '#74b9ff';
+        ctx.textAlign = 'right';
+        ctx.fillText(String(dataManager.data.diamonds || 0), chipX + chipW - 14, chipY + chipH / 2);
+        ctx.textBaseline = 'alphabetic';
     }
 
-    renderValueProposition(ctx) {
-        const x = this.width / 2;
-        const y = 240;
+    renderHeader(ctx) {
+        RenderUtils.drawGlowingText(ctx, '太空幸存者', this.width / 2, 186, 56, '#e7f5ff', '#00b8ff');
 
         ctx.save();
         ctx.textAlign = 'center';
-
-        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.fillStyle = 'rgba(255,255,255,0.82)';
         ctx.font = '18px Arial';
-        ctx.fillText('90秒一局 · 护航母舰跃迁 · 三选一构筑流派', x, y);
-
+        ctx.fillText('110 秒突围任务，构建你的战机流派', this.width / 2, 238);
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
         ctx.font = '14px Arial';
-        ctx.fillText('轻松上手但不无脑：拆机库→暴露核心→击破BOSS', x, y + 26);
-
-        ctx.fillStyle = 'rgba(0, 168, 255, 0.18)';
-        ctx.fillRect(this.width / 2 - 220, y + 44, 440, 1);
-
+        ctx.fillText('守护母舰完成跃迁，击破首领获得额外蓝图', this.width / 2, 264);
+        ctx.strokeStyle = 'rgba(0,184,255,0.35)';
+        ctx.beginPath();
+        ctx.moveTo(this.width / 2 - 180, 280);
+        ctx.lineTo(this.width / 2 + 180, 280);
+        ctx.stroke();
         ctx.restore();
     }
 
-    renderEquipmentSlots(ctx) {
-        const slotsY = 320;
-        const slotSize = 80;
-        const gap = 30;
-        const totalW = (slotSize * 4) + (gap * 3);
-        let startX = (this.width - totalW) / 2;
+    renderFighterShowcase(ctx) {
+        const panelW = Math.min(440, this.width - 64);
+        const panelH = 360;
+        const panelX = (this.width - panelW) / 2;
+        const panelY = 320;
 
-        const equipment = dataManager.data.equipment;
-        // Localized Slots
-        const slots = ['主炮', '装甲', '僚机', '雷达'];
+        RenderUtils.drawCyberPanel(ctx, panelX, panelY, panelW, panelH, {
+            color: '#00c9ff',
+            bgAlpha: 0.45,
+            corner: 16
+        });
+
+        const fighterName = dataManager.data.currentFighter || 'J-20';
+        ctx.fillStyle = '#cfefff';
+        ctx.font = '18px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`当前战机：${fighterName}`, this.width / 2, panelY + 44);
+
+        ctx.save();
+        ctx.translate(this.width / 2, panelY + 190);
+        const ringGrad = ctx.createRadialGradient(0, 0, 18, 0, 0, 130);
+        ringGrad.addColorStop(0, 'rgba(0,201,255,0.35)');
+        ringGrad.addColorStop(1, 'rgba(0,201,255,0)');
+        ctx.scale(1, 0.32);
+        ctx.fillStyle = ringGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 130, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        this.demoPlayer.x = this.width / 2;
+        this.demoPlayer.y = panelY + 190;
+        this.demoPlayer.render(ctx);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('点击战机进入机库强化', this.width / 2, panelY + panelH - 26);
+
+        this.fighterTapZone = {
+            x: panelX + 40,
+            y: panelY + 74,
+            w: panelW - 80,
+            h: panelH - 96
+        };
+    }
+
+    renderCommercialStrip(ctx) {
+        const y = 714;
+        const h = 84;
+        const gap = 16;
+        const w = (this.width - 64 - gap) / 2;
+        const x1 = 24;
+        const x2 = x1 + w + gap;
+
+        RenderUtils.fillRoundRect(ctx, x1, y, w, h, 12, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.2)', 1);
+        ctx.fillStyle = '#feca57';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('首胜奖励', x1 + 12, y + 26);
+        ctx.fillStyle = '#dfe6e9';
+        ctx.font = '13px Arial';
+        ctx.fillText('今日首次胜利：额外 +80 金币', x1 + 12, y + 50);
+        ctx.fillStyle = '#74b9ff';
+        ctx.fillText('目标：完成一次通关', x1 + 12, y + 70);
+
+        RenderUtils.fillRoundRect(ctx, x2, y, w, h, 12, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.2)', 1);
+        ctx.fillStyle = '#55efc4';
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText('补给加成', x2 + 12, y + 26);
+        ctx.fillStyle = '#dfe6e9';
+        ctx.font = '13px Arial';
+        ctx.fillText('广告位预留：本局金币 +30%', x2 + 12, y + 50);
+        ctx.fillStyle = '#95a5a6';
+        ctx.fillText('当前版本：敬请期待', x2 + 12, y + 70);
+    }
+
+    renderEquipmentDeck(ctx) {
+        const baseY = 820;
+        const slotSize = 88;
+        const gap = 18;
+        const totalW = slotSize * SLOT_CONFIG.length + gap * (SLOT_CONFIG.length - 1);
+        const startX = (this.width - totalW) / 2;
 
         this.slotHitBoxes = [];
+        SLOT_CONFIG.forEach((slot, i) => {
+            const x = startX + i * (slotSize + gap);
+            const y = baseY;
+            this.slotHitBoxes.push({ key: slot.key, x, y, w: slotSize, h: slotSize });
 
-        slots.forEach((name, i) => {
-            const bx = startX + i * (slotSize + gap);
-            const by = slotsY;
+            RenderUtils.fillRoundRect(
+                ctx,
+                x,
+                y,
+                slotSize,
+                slotSize,
+                12,
+                'rgba(255,255,255,0.09)',
+                'rgba(0,184,255,0.66)',
+                2
+            );
 
-            this.slotHitBoxes.push({ name: name, x: bx, y: by, w: slotSize, h: slotSize });
-
-            // 槽位背景 (半透明科幻框)
-            RenderUtils.fillRoundRect(ctx, bx, by, slotSize, slotSize, 10, 'rgba(255, 255, 255, 0.1)', '#00A8FF', 1);
-
-            // 连接线 (指向中间飞机的视觉引导，可选)
-            // ...
-
-            // 槽位名称
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
-            ctx.font = '12px Arial';
+            ctx.font = '13px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(name, bx + slotSize / 2, by - 8);
+            ctx.fillText(slot.label, x + slotSize / 2, y - 8);
 
-            // 装备等级
-            // check for '主炮' instead of 'MainGun'
-            if (name === '主炮' && equipment.mainWeapon) {
-                const wp = equipment.mainWeapon;
-                ctx.fillStyle = GameConfig.Rarity[wp.rarity] || '#fff';
+            const mainWeapon = dataManager.data.equipment && dataManager.data.equipment.mainWeapon;
+            if (slot.key === 'MainGun' && mainWeapon) {
+                const rarityColor = GameConfig.Rarity[mainWeapon.rarity] || '#ffffff';
+                ctx.fillStyle = rarityColor;
                 ctx.font = 'bold 24px Arial';
-                ctx.fillText(`Lv.${wp.level}`, bx + slotSize / 2, by + slotSize / 2 + 8);
+                ctx.fillText(`级 ${mainWeapon.level}`, x + slotSize / 2, y + slotSize / 2 + 10);
             } else {
-                ctx.fillStyle = '#555';
-                ctx.font = '24px Arial';
-                ctx.fillText('+', bx + slotSize / 2, by + slotSize / 2 + 8);
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.font = '26px Arial';
+                ctx.fillText('+', x + slotSize / 2, y + slotSize / 2 + 10);
             }
         });
     }
 
     renderStartButton(ctx) {
-        // 动态发光按钮
-        const glowColor = Math.floor(Date.now() / 20) % 255;
-        const glowStyle = `rgb(255, ${glowColor}, 0)`; // 呼吸灯效果
+        const pulse = Math.sin(Date.now() / 260) * 4;
+        const x = this.btnStart.x - pulse / 2;
+        const y = this.btnStart.y - pulse / 2;
+        const w = this.btnStart.w + pulse;
+        const h = this.btnStart.h + pulse;
 
-        RenderUtils.fillRoundRect(
-            ctx, this.btnStart.x, this.btnStart.y, this.btnStart.w, this.btnStart.h,
-            40, '#ff4757', '#fff', 3
-        );
-
-        // 文字
-        RenderUtils.drawGlowingText(ctx, '开始任务',
-            this.btnStart.x + this.btnStart.w / 2,
-            this.btnStart.y + 52,
-            32, '#fff', '#ff6b81'
-        );
+        RenderUtils.fillRoundRect(ctx, x, y, w, h, 44, '#ff4d5d', '#ffffff', 3);
+        RenderUtils.drawGlowingText(ctx, '开始任务', this.width / 2, y + 56, 36, '#ffffff', '#ff7f8e');
     }
 
     handleInput(type, x, y) {
-        if (type === 'touchstart') {
-            if (this.activePopup) {
-                const handled = this.activePopup.handleInput(x, y);
-                if (!this.activePopup.visible) this.activePopup = null;
-                return handled;
-            }
+        if (type !== 'touchstart') return false;
 
-            // 1. Profile Click
-            if (x >= this.btnProfile.x && x <= this.btnProfile.x + this.btnProfile.w &&
-                y >= this.btnProfile.y && y <= this.btnProfile.y + this.btnProfile.h) {
-                this.sceneManager.switchScene('PROFILE');
+        if (this.activePopup) {
+            const handled = this.activePopup.handleInput(x, y);
+            if (!this.activePopup.visible) this.activePopup = null;
+            return handled;
+        }
+
+        if (this.hitRect(x, y, this.btnProfile)) {
+            this.sceneManager.switchScene('PROFILE');
+            return true;
+        }
+
+        if (this.hitRect(x, y, this.btnStart)) {
+            this.sceneManager.switchScene('BATTLE');
+            return true;
+        }
+
+        if (this.hitRect(x, y, this.fighterTapZone)) {
+            this.sceneManager.switchScene('HANGAR');
+            return true;
+        }
+
+        for (let i = 0; i < this.slotHitBoxes.length; i++) {
+            const slot = this.slotHitBoxes[i];
+            if (this.hitRect(x, y, slot)) {
+                this.equipPopup.showSlot(slot.key);
+                this.activePopup = this.equipPopup;
                 return true;
-            }
-
-            // 2. Start
-            if (x >= this.btnStart.x && x <= this.btnStart.x + this.btnStart.w &&
-                y >= this.btnStart.y && y <= this.btnStart.y + this.btnStart.h) {
-                this.sceneManager.switchScene('BATTLE');
-                return true;
-            }
-
-            // 2.5 Fighter Model Click -> Shortcut to Hangar
-            // Fighter is roughly at width/2, height/2 - 50, size ~64-80
-            const fx = this.width / 2;
-            const fy = this.height / 2 - 50;
-            if (Math.abs(x - fx) < 80 && Math.abs(y - fy) < 100) {
-                this.sceneManager.switchScene('PROFILE', { tab: '战机' });
-                return true;
-            }
-
-            // 3. Slots (Keep functionality)
-            for (let slot of this.slotHitBoxes) {
-                if (x >= slot.x && x <= slot.x + slot.w && y >= slot.y && y <= slot.y + slot.h) {
-                    this.equipPopup.showSlot(slot.name);
-                    this.activePopup = this.equipPopup;
-                    return true;
-                }
             }
         }
+        return false;
+    }
+
+    hitRect(x, y, rect) {
+        if (!rect) return false;
+        return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
     }
 }

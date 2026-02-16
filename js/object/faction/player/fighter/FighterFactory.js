@@ -21,6 +21,7 @@ export default class FighterFactory {
             desc: fighter.desc,
             hp: fighter.hp,
             speed: fighter.speed,
+            damage: fighter.damage,
             unlockCost: fighter.unlockCost
         };
     }

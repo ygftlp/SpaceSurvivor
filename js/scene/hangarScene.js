@@ -1,363 +1,453 @@
-/**
- * HangarScene - 机库界面（局外成长）
- * 管理：战机选择、装备升级、蓝图查看
- */
-
-import BaseScene from './baseScene.js';
+﻿import BaseScene from './baseScene.js';
 import { GameConfig } from '../config.js';
 import Button from '../object/ui/Button.js';
 import { metaProgression } from '../manager/metaProgression.js';
 import { dataManager } from '../manager/dataManager.js';
+import FighterFactory from '../object/faction/player/fighter/FighterFactory.js';
+
+const FIGHTER_LABELS = {
+    'J-20': 'J-20 威龙',
+    'F-22': 'F-22 猛禽',
+    'Su-57': 'Su-57',
+    'F-16': 'F-16 战隼'
+};
+
+const FIGHTER_ROLES = {
+    'J-20': '隐身突防',
+    'F-22': '均衡空优',
+    'Su-57': '近战压制',
+    'F-16': '高机动入门'
+};
+
+const FIGHTER_ORDER = ['J-20', 'F-22', 'Su-57', 'F-16'];
 
 export default class HangarScene extends BaseScene {
     constructor(sceneManager) {
         super(sceneManager);
-        
-        this.tab = 'fighters'; // fighters / equipment / blueprints
-        this.selectedFighter = 'J-20';
-        
+        this.tab = 'fighters';
+        this.selectedFighter = dataManager.data.currentFighter || 'J-20';
+        this.previewFighterId = null;
+        this.previewFighter = null;
+        this.cardHitboxes = [];
+        this.actionHitboxes = {};
+        this.toast = null;
+        this.uiComponents = [];
         this.initUI();
     }
-    
+
     initUI() {
         const w = GameConfig.Screen.width;
-        const h = this.sceneManager.game.logicHeight;
-        
-        // 返回按钮
-        this.btnBack = new Button(20, 20, 60, 40, '返回');
-        this.btnBack.setStyle('#444', '#fff', 16).setCallback(() => {
+
+        this.btnBack = new Button(20, 20, 96, 40, '返回');
+        this.btnBack.setStyle('#3a3f4a', '#ffffff', 16, 8).setCallback(() => {
             this.sceneManager.switchScene('HOME');
         });
-        
-        // Tab按钮
-        this.btnTabFighters = new Button(w/2 - 120, 80, 100, 36, '战机');
-        this.btnTabFighters.setStyle('#2c3e50', '#fff', 14).setCallback(() => this.switchTab('fighters'));
-        
-        this.btnTabEquipment = new Button(w/2 - 10, 80, 100, 36, '装备');
-        this.btnTabEquipment.setStyle('#34495e', '#fff', 14).setCallback(() => this.switchTab('equipment'));
-        
-        this.btnTabBlueprints = new Button(w/2 + 100, 80, 100, 36, '蓝图');
-        this.btnTabBlueprints.setStyle('#34495e', '#fff', 14).setCallback(() => this.switchTab('blueprints'));
-        
-        this.uiComponents = [this.btnBack, this.btnTabFighters, this.btnTabEquipment, this.btnTabBlueprints];
+
+        this.btnTabFighters = new Button(w / 2 - 140, 80, 110, 36, '战机');
+        this.btnTabFighters.setCallback(() => this.switchTab('fighters'));
+
+        this.btnTabEquipment = new Button(w / 2 - 15, 80, 110, 36, '装备');
+        this.btnTabEquipment.setCallback(() => this.switchTab('equipment'));
+
+        this.btnTabBlueprints = new Button(w / 2 + 110, 80, 110, 36, '蓝图');
+        this.btnTabBlueprints.setCallback(() => this.switchTab('blueprints'));
+
+        this.uiComponents = [
+            this.btnBack,
+            this.btnTabFighters,
+            this.btnTabEquipment,
+            this.btnTabBlueprints
+        ];
+        this.syncTabStyle();
     }
-    
+
+    enter() {
+        this.selectedFighter = dataManager.data.currentFighter || this.selectedFighter || 'J-20';
+        this.syncTabStyle();
+    }
+
+    update(dt) {
+        if (this.previewFighter && this.tab === 'fighters') {
+            this.previewFighter.update(dt);
+        }
+        if (this.toast) {
+            this.toast.life -= dt;
+            if (this.toast.life <= 0) this.toast = null;
+        }
+    }
+
     switchTab(tab) {
         this.tab = tab;
-        // 更新按钮样式
-        const activeColor = '#2c3e50';
-        const inactiveColor = '#34495e';
-        
-        this.btnTabFighters.setStyle(tab === 'fighters' ? activeColor : inactiveColor, '#fff', 14);
-        this.btnTabEquipment.setStyle(tab === 'equipment' ? activeColor : inactiveColor, '#fff', 14);
-        this.btnTabBlueprints.setStyle(tab === 'blueprints' ? activeColor : inactiveColor, '#fff', 14);
+        this.syncTabStyle();
+        this.actionHitboxes = {};
     }
-    
+
+    syncTabStyle() {
+        const active = '#2c3e50';
+        const inactive = '#3b4250';
+        this.btnTabFighters.setStyle(this.tab === 'fighters' ? active : inactive, '#ffffff', 14, 8);
+        this.btnTabEquipment.setStyle(this.tab === 'equipment' ? active : inactive, '#ffffff', 14, 8);
+        this.btnTabBlueprints.setStyle(this.tab === 'blueprints' ? active : inactive, '#ffffff', 14, 8);
+    }
+
+    setToast(text, color = '#74b9ff', life = 1.8) {
+        this.toast = { text, color, life };
+    }
+
+    ensurePreviewFighter(id) {
+        if (!id) return null;
+        if (this.previewFighterId !== id || !this.previewFighter) {
+            this.previewFighterId = id;
+            this.previewFighter = FighterFactory.createFighter(id);
+        }
+        return this.previewFighter;
+    }
+
     render(ctx) {
         const w = GameConfig.Screen.width;
         const h = this.sceneManager.game.logicHeight;
-        
-        // 背景
-        ctx.fillStyle = '#0a0a1a';
+
+        const bg = ctx.createLinearGradient(0, 0, 0, h);
+        bg.addColorStop(0, '#0a1022');
+        bg.addColorStop(1, '#080b16');
+        ctx.fillStyle = bg;
         ctx.fillRect(0, 0, w, h);
-        
-        // 标题
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 32px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('机库', w/2, 50);
-        
-        // 根据Tab渲染内容
-        switch(this.tab) {
-            case 'fighters':
-                this.renderFighters(ctx, w, h);
-                break;
-            case 'equipment':
-                this.renderEquipment(ctx, w, h);
-                break;
-            case 'blueprints':
-                this.renderBlueprints(ctx, w, h);
-                break;
+
+        ctx.strokeStyle = 'rgba(0, 168, 255, 0.08)';
+        ctx.lineWidth = 1;
+        for (let y = 120; y < h; y += 44) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
         }
-        
-        // UI组件
-        this.uiComponents.forEach(c => c.render(ctx));
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 30px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('机库', w / 2, 50);
+
+        this.uiComponents.forEach((c) => c.render(ctx));
+
+        if (this.tab === 'fighters') {
+            this.renderFighters(ctx, w, h);
+        } else if (this.tab === 'equipment') {
+            this.renderEquipment(ctx, w, h);
+        } else {
+            this.renderBlueprints(ctx, w, h);
+        }
+
+        if (this.toast) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(1, this.toast.life));
+            ctx.fillStyle = this.toast.color;
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.toast.text, w / 2, h - 34);
+            ctx.restore();
+        }
     }
-    
+
     renderFighters(ctx, w, h) {
         const data = metaProgression.getDisplayData();
-        const fighters = data.fighters;
-        
-        // 战机列表（左侧）
-        const startY = 140;
-        const cardHeight = 100;
-        let y = startY;
-        
-        Object.keys(fighters).forEach((fighterId, index) => {
-            const fighter = fighters[fighterId];
-            const isSelected = this.selectedFighter === fighterId;
-            
-            // 卡片背景
-            ctx.fillStyle = isSelected ? 'rgba(52, 152, 219, 0.3)' : 'rgba(255,255,255,0.05)';
-            ctx.fillRect(20, y, w/2 - 40, cardHeight);
-            
-            if (isSelected) {
-                ctx.strokeStyle = '#3498db';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(20, y, w/2 - 40, cardHeight);
-            }
-            
-            // 战机名称
-            ctx.fillStyle = fighter.unlocked ? '#fff' : '#666';
-            ctx.font = 'bold 20px Arial';
+        const fighters = data.fighters || {};
+        const stats = data.stats || {};
+
+        const listX = 20;
+        const listY = 136;
+        const listW = 300;
+        const cardH = 92;
+        const cardGap = 10;
+
+        this.cardHitboxes = [];
+        this.actionHitboxes = {};
+
+        FIGHTER_ORDER.forEach((id, idx) => {
+            const fMeta = fighters[id] || { unlocked: false, level: 0, unlockCost: 0 };
+            const y = listY + idx * (cardH + cardGap);
+            const selected = id === this.selectedFighter;
+
+            ctx.fillStyle = selected ? 'rgba(46, 204, 113, 0.2)' : 'rgba(255,255,255,0.06)';
+            ctx.fillRect(listX, y, listW, cardH);
+            ctx.strokeStyle = selected ? '#2ecc71' : 'rgba(255,255,255,0.18)';
+            ctx.lineWidth = selected ? 2 : 1;
+            ctx.strokeRect(listX, y, listW, cardH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px Arial';
             ctx.textAlign = 'left';
-            ctx.fillText(fighterId, 40, y + 30);
-            
-            // 状态
-            if (fighter.unlocked) {
-                ctx.fillStyle = '#27ae60';
-                ctx.font = '14px Arial';
-                ctx.fillText(`Lv.${fighter.level}`, 40, y + 55);
-                
-                // 属性加成
-                const bonus = metaProgression.getFighterBonus(fighterId);
-                ctx.fillStyle = '#aaa';
-                ctx.font = '12px Arial';
-                ctx.fillText(`伤害+${bonus.damage}% 生命+${bonus.hp} 速度+${bonus.speed}`, 40, y + 75);
+            ctx.fillText(FIGHTER_LABELS[id] || id, listX + 14, y + 28);
+
+            ctx.fillStyle = '#9fb3c8';
+            ctx.font = '12px Arial';
+            ctx.fillText(FIGHTER_ROLES[id] || '未知定位', listX + 14, y + 48);
+
+            if (fMeta.unlocked) {
+                ctx.fillStyle = '#2ecc71';
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText(`已解锁 · 等级 ${fMeta.level}`, listX + 14, y + 68);
             } else {
                 ctx.fillStyle = '#e74c3c';
-                ctx.font = '14px Arial';
-                ctx.fillText('未解锁', 40, y + 55);
-                
-                // 解锁条件
-                ctx.fillStyle = '#888';
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText('未解锁', listX + 14, y + 68);
+                ctx.fillStyle = '#c7d0d9';
                 ctx.font = '12px Arial';
-                let condition = '';
-                switch(fighterId) {
-                    case 'F-22': condition = `击杀${data.stats.totalKills}/${fighter.unlockCost}敌人`; break;
-                    case 'Su-57': condition = `满血通关${data.stats.fullHealthWins}/${fighter.unlockCost}次`; break;
-                    case 'F-16': condition = `通关${data.stats.totalGames}/${fighter.unlockCost}次`; break;
-                }
-                ctx.fillText(condition, 40, y + 75);
+                ctx.fillText(this.getUnlockProgressText(id, fMeta, stats), listX + 80, y + 68);
             }
-            
-            // 选择按钮
-            if (fighter.unlocked && !isSelected) {
-                ctx.fillStyle = '#3498db';
-                ctx.fillRect(w/2 - 110, y + 30, 70, 30);
-                ctx.fillStyle = '#fff';
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('选择', w/2 - 75, y + 50);
-            }
-            
-            y += cardHeight + 10;
+
+            this.cardHitboxes.push({ id, x: listX, y, w: listW, h: cardH });
         });
-        
-        // 右侧：选中战机详情
-        const selectedData = fighters[this.selectedFighter];
-        if (selectedData && selectedData.unlocked) {
-            const detailX = w/2 + 20;
-            
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 24px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(this.selectedFighter, detailX, 160);
-            
-            // 升级按钮
-            const bonus = metaProgression.getFighterBonus(this.selectedFighter);
-            const nextLevel = selectedData.level + 1;
-            const costCommon = selectedData.level * 50;
-            const costRare = selectedData.level * 10;
-            
-            ctx.fillStyle = '#f39c12';
-            ctx.fillRect(detailX, 200, 150, 40);
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('升星', detailX + 75, 225);
-            
-            ctx.fillStyle = '#aaa';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(`需要: ${costCommon}普通 ${costRare}稀有蓝图`, detailX, 260);
+
+        const detailX = 340;
+        const detailY = 136;
+        const detailW = w - detailX - 20;
+        const detailH = h - detailY - 24;
+
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(detailX, detailY, detailW, detailH);
+        ctx.strokeStyle = 'rgba(0, 210, 211, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(detailX, detailY, detailW, detailH);
+
+        const selectedMeta = fighters[this.selectedFighter];
+        if (!selectedMeta) return;
+
+        const currentFighter = dataManager.data.currentFighter;
+        const isCurrent = currentFighter === this.selectedFighter;
+        const label = FIGHTER_LABELS[this.selectedFighter] || this.selectedFighter;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(label, detailX + 18, detailY + 34);
+
+        if (isCurrent) {
+            ctx.fillStyle = '#2ecc71';
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText('当前出战', detailX + detailW - 110, detailY + 34);
         }
+
+        if (!selectedMeta.unlocked) {
+            ctx.fillStyle = '#d0d8e0';
+            ctx.font = '16px Arial';
+            ctx.fillText('该战机尚未解锁。', detailX + 18, detailY + 84);
+            ctx.fillStyle = '#f1c40f';
+            ctx.font = '14px Arial';
+            ctx.fillText(this.getUnlockProgressText(this.selectedFighter, selectedMeta, stats), detailX + 18, detailY + 112);
+            return;
+        }
+
+        const preview = this.ensurePreviewFighter(this.selectedFighter);
+        const previewCx = detailX + detailW / 2;
+        const previewCy = detailY + 250;
+        ctx.save();
+        ctx.translate(previewCx, previewCy);
+        if (preview && preview.render) preview.render(ctx, 150);
+        ctx.restore();
+
+        const fighterStats = FighterFactory.getFighterInfo(this.selectedFighter);
+        const bonus = metaProgression.getFighterBonus(this.selectedFighter);
+        const hp = (fighterStats.hp || 0) + (bonus.hp || 0);
+        const speed = (fighterStats.speed || 0) + (bonus.speed || 0);
+        const damage = Math.round((fighterStats.damage || 0) * (1 + (bonus.damage || 0) / 100));
+
+        this.drawStatRow(ctx, detailX + 20, detailY + 360, detailW - 40, '生命', hp, 180, '#ff7675');
+        this.drawStatRow(ctx, detailX + 20, detailY + 390, detailW - 40, '速度', speed, 24, '#74b9ff');
+        this.drawStatRow(ctx, detailX + 20, detailY + 420, detailW - 40, '火力', damage, 40, '#f39c12');
+
+        const common = data.blueprints.common || 0;
+        const rare = data.blueprints.rare || 0;
+        const nextCommon = selectedMeta.level * 50;
+        const nextRare = selectedMeta.level * 10;
+
+        ctx.fillStyle = '#c8d6e5';
+        ctx.font = '13px Arial';
+        ctx.fillText(`蓝图库存：普通 ${common}  稀有 ${rare}`, detailX + 20, detailY + 455);
+        ctx.fillText(`升星消耗：普通 ${nextCommon}  稀有 ${nextRare}`, detailX + 20, detailY + 476);
+
+        const equipBtn = { x: detailX + 20, y: detailY + detailH - 118, w: detailW - 40, h: 42 };
+        const upBtn = { x: detailX + 20, y: detailY + detailH - 64, w: detailW - 40, h: 42 };
+
+        this.drawActionButton(
+            ctx,
+            equipBtn,
+            isCurrent ? '当前战机' : '设为出战',
+            isCurrent ? '#607d8b' : '#27ae60',
+            !isCurrent
+        );
+
+        const canUpgrade = this.canUpgradeFighter(selectedMeta, data.blueprints);
+        this.drawActionButton(
+            ctx,
+            upBtn,
+            canUpgrade ? '战机升星' : '战机升星（材料不足）',
+            canUpgrade ? '#f39c12' : '#7f8c8d',
+            true
+        );
+
+        this.actionHitboxes = {
+            equip: { ...equipBtn, enabled: !isCurrent },
+            upgrade: { ...upBtn, enabled: canUpgrade }
+        };
     }
-    
+
+    drawStatRow(ctx, x, y, w, label, value, maxValue, color) {
+        const rate = maxValue > 0 ? Math.max(0, Math.min(1, value / maxValue)) : 0;
+        ctx.fillStyle = '#aab7c4';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${label}: ${value}`, x, y - 2);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fillRect(x, y + 4, w, 8);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y + 4, w * rate, 8);
+    }
+
+    drawActionButton(ctx, rect, text, bg, active) {
+        ctx.fillStyle = bg;
+        ctx.globalAlpha = active ? 1 : 0.75;
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(text, rect.x + rect.w / 2, rect.y + 27);
+    }
+
+    canUpgradeFighter(fMeta, blueprints) {
+        if (!fMeta || !fMeta.unlocked) return false;
+        const needCommon = fMeta.level * 50;
+        const needRare = fMeta.level * 10;
+        return (blueprints.common || 0) >= needCommon && (blueprints.rare || 0) >= needRare;
+    }
+
+    getUnlockProgressText(id, fMeta, stats) {
+        if (id === 'F-22') {
+            return `击杀 ${stats.totalKills || 0}/${fMeta.unlockCost || 0}`;
+        }
+        if (id === 'Su-57') {
+            return `满血通关 ${stats.fullHealthWins || 0}/${fMeta.unlockCost || 0}`;
+        }
+        if (id === 'F-16') {
+            return `对局 ${stats.totalGames || 0}/${fMeta.unlockCost || 0}`;
+        }
+        return '未解锁';
+    }
+
     renderEquipment(ctx, w, h) {
         const data = metaProgression.getDisplayData();
-        const equipment = data.equipment;
-        const bonus = data.totalBonus;
-        
-        // 左侧：装备列表
-        const startY = 140;
-        let y = startY;
-        
-        Object.keys(equipment).forEach((equipId, index) => {
-            const equip = equipment[equipId];
-            
-            // 装备名称映射
-            const nameMap = {
-                'weapon_damage': '武器伤害',
-                'weapon_speed': '武器射速',
-                'hull_armor': '护甲强化',
-                'shield_capacity': '护盾容量',
-                'energy_cell': '能量电池',
-                'cooling_system': '冷却系统',
-                'magnet_range': '磁力范围',
-                'exp_booster': '经验加成'
-            };
-            
-            // 卡片
-            ctx.fillStyle = 'rgba(255,255,255,0.05)';
-            ctx.fillRect(20, y, w - 40, 60);
-            
-            // 名称
-            ctx.fillStyle = '#fff';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(nameMap[equipId], 40, y + 25);
-            
-            // 等级
-            ctx.fillStyle = '#f39c12';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText(`Lv.${equip.level}/${equip.maxLevel}`, 40, y + 50);
-            
-            // 效果
-            ctx.fillStyle = '#aaa';
-            ctx.font = '12px Arial';
-            const currentValue = equip.baseValue + equip.level * equip.perLevel;
-            ctx.fillText(`当前: +${currentValue}${equipId.includes('Percent') ? '%' : ''}`, 200, y + 35);
-            
-            // 升级按钮
-            if (equip.level < equip.maxLevel) {
-                ctx.fillStyle = '#27ae60';
-                ctx.fillRect(w - 120, y + 15, 80, 30);
-                ctx.fillStyle = '#fff';
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('升级', w - 80, y + 35);
-            }
-            
-            y += 70;
-        });
-        
-        // 底部：总属性加成
-        ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
-        ctx.fillRect(20, h - 120, w - 40, 100);
-        ctx.fillStyle = '#3498db';
-        ctx.font = 'bold 16px Arial';
+        const bonus = data.totalBonus || {};
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('总属性加成', 40, h - 95);
-        
-        ctx.fillStyle = '#aaa';
-        ctx.font = '12px Arial';
-        ctx.fillText(`伤害+${bonus.damagePercent}% 射速+${bonus.speedPercent}% 生命+${bonus.hpBonus}`, 40, h - 75);
-        ctx.fillText(`护盾+${bonus.shieldBonus} 能量+${bonus.energyMax} 拾取+${bonus.magnetRange}`, 40, h - 55);
+        ctx.fillText('装备总览', 28, 160);
+
+        const rows = [
+            `伤害加成：+${bonus.damagePercent || 0}%`,
+            `射速加成：+${bonus.speedPercent || 0}%`,
+            `生命加成：+${bonus.hpBonus || 0}`,
+            `护盾加成：+${bonus.shieldBonus || 0}`,
+            `能量上限：+${bonus.energyMax || 0}`,
+            `拾取半径：${bonus.magnetRange || 150}`
+        ];
+
+        rows.forEach((r, i) => {
+            ctx.fillStyle = '#c8d6e5';
+            ctx.font = '15px Arial';
+            ctx.fillText(r, 32, 204 + i * 30);
+        });
+
+        ctx.fillStyle = '#95a5a6';
+        ctx.font = '13px Arial';
+        ctx.fillText('装备细分升级面板将在下一阶段开放。', 32, h - 36);
     }
-    
+
     renderBlueprints(ctx, w, h) {
         const data = metaProgression.getDisplayData();
-        const blueprints = data.blueprints;
-        
-        // 蓝图展示
-        const types = [
-            { id: 'common', name: '普通蓝图', color: '#95a5a6', desc: '小怪掉落，用于基础升级' },
-            { id: 'rare', name: '稀有蓝图', color: '#3498db', desc: '精英掉落，用于进阶升级' },
-            { id: 'legendary', name: '传说蓝图', color: '#f39c12', desc: 'BOSS掉落，用于顶级装备' }
-        ];
-        
-        const startY = 140;
-        let y = startY;
-        
-        types.forEach(type => {
-            const count = blueprints[type.id];
-            
-            // 图标
-            ctx.fillStyle = type.color;
-            ctx.beginPath();
-            ctx.arc(60, y + 30, 25, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // 名称
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 20px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(type.name, 100, y + 25);
-            
-            // 数量
-            ctx.fillStyle = type.color;
-            ctx.font = 'bold 28px Arial';
-            ctx.textAlign = 'right';
-            ctx.fillText(count.toString(), w - 40, y + 30);
-            
-            // 描述
-            ctx.fillStyle = '#888';
-            ctx.font = '14px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(type.desc, 100, y + 55);
-            
-            y += 100;
-        });
-        
-        // 获取途径提示
-        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-        ctx.fillRect(20, h - 150, w - 40, 130);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 16px Arial';
+        const bp = data.blueprints || {};
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('获取途径', 40, h - 125);
-        
-        ctx.fillStyle = '#aaa';
-        ctx.font = '14px Arial';
-        ctx.fillText('普通蓝图: 击杀小怪、存活时间奖励', 40, h - 100);
-        ctx.fillText('稀有蓝图: 击杀精英敌人、存活时间奖励', 40, h - 75);
-        ctx.fillText('传说蓝图: 击杀BOSS、首次通关奖励', 40, h - 50);
+        ctx.fillText('蓝图库存', 28, 160);
+
+        const rows = [
+            { name: '普通', key: 'common', color: '#95a5a6' },
+            { name: '稀有', key: 'rare', color: '#3498db' },
+            { name: '传说', key: 'legendary', color: '#f39c12' }
+        ];
+
+        rows.forEach((row, i) => {
+            const y = 220 + i * 76;
+            ctx.fillStyle = 'rgba(255,255,255,0.06)';
+            ctx.fillRect(28, y - 34, w - 56, 56);
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.strokeRect(28, y - 34, w - 56, 56);
+
+            ctx.fillStyle = row.color;
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText(row.name, 46, y);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'right';
+            ctx.fillText(String(bp[row.key] || 0), w - 46, y);
+            ctx.textAlign = 'left';
+        });
+
+        ctx.fillStyle = '#95a5a6';
+        ctx.font = '13px Arial';
+        ctx.fillText('通过生存通关和击败首领获取更多蓝图。', 28, h - 36);
     }
-    
+
     handleInput(type, x, y) {
-        for (let comp of this.uiComponents) {
-            if (comp.handleInput(type, x, y)) return true;
-        }
-        
-        // Tab切换点击检测
-        if (type === 'touchstart') {
-            const w = GameConfig.Screen.width;
-            
-            // 战机Tab
-            if (x >= w/2 - 120 && x <= w/2 - 20 && y >= 80 && y <= 116) {
-                this.switchTab('fighters');
+        if (type !== 'touchstart') return false;
+
+        for (let i = this.uiComponents.length - 1; i >= 0; i--) {
+            if (this.uiComponents[i].handleInput(type, x, y)) {
                 return true;
-            }
-            // 装备Tab
-            if (x >= w/2 - 10 && x <= w/2 + 90 && y >= 80 && y <= 116) {
-                this.switchTab('equipment');
-                return true;
-            }
-            // 蓝图Tab
-            if (x >= w/2 + 100 && x <= w/2 + 200 && y >= 80 && y <= 116) {
-                this.switchTab('blueprints');
-                return true;
-            }
-            
-            // 战机选择（fighters tab）
-            if (this.tab === 'fighters') {
-                const startY = 140;
-                const cardHeight = 100;
-                
-                ['J-20', 'F-22', 'Su-57', 'F-16'].forEach((id, index) => {
-                    const cardY = startY + index * (cardHeight + 10);
-                    if (x >= 20 && x <= w/2 - 40 && y >= cardY && y <= cardY + cardHeight) {
-                        const fighter = metaProgression.fighterUnlocks[id];
-                        if (fighter.unlocked) {
-                            this.selectedFighter = id;
-                        }
-                        return true;
-                    }
-                });
             }
         }
-        
+
+        if (this.tab !== 'fighters') return false;
+
+        for (let i = 0; i < this.cardHitboxes.length; i++) {
+            const card = this.cardHitboxes[i];
+            if (x >= card.x && x <= card.x + card.w && y >= card.y && y <= card.y + card.h) {
+                this.selectedFighter = card.id;
+                this.previewFighter = null;
+                this.previewFighterId = null;
+                return true;
+            }
+        }
+
+        const equip = this.actionHitboxes.equip;
+        if (equip && x >= equip.x && x <= equip.x + equip.w && y >= equip.y && y <= equip.y + equip.h) {
+            if (!equip.enabled) {
+                this.setToast('已经是当前出战战机', '#95a5a6');
+                return true;
+            }
+            dataManager.unlockFighter(this.selectedFighter);
+            dataManager.setFighter(this.selectedFighter);
+            this.setToast(`已切换为 ${this.selectedFighter}`, '#2ecc71');
+            return true;
+        }
+
+        const upgrade = this.actionHitboxes.upgrade;
+        if (upgrade && x >= upgrade.x && x <= upgrade.x + upgrade.w && y >= upgrade.y && y <= upgrade.y + upgrade.h) {
+            const ok = metaProgression.upgradeFighter(this.selectedFighter);
+            if (ok) {
+                this.setToast(`升星成功：${this.selectedFighter}`, '#f39c12');
+            } else {
+                this.setToast('蓝图不足', '#e67e22');
+            }
+            return true;
+        }
+
         return false;
     }
 }

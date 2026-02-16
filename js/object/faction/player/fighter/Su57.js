@@ -1,10 +1,10 @@
-import BaseFighter from './BaseFighter.js';
+﻿import BaseFighter from './BaseFighter.js';
 
 export default class Su57 extends BaseFighter {
     constructor() {
         super();
-        this.name = '苏-57 罪犯';
-        this.desc = '【近战格斗】重型前线战机。机动性与火力并重。';
+        this.name = '苏-57';
+        this.desc = '【近战压制】重型前线战机，兼顾机动与持续火力。';
         this.hp = 110;
         this.speed = 11;
         this.damage = 15;
@@ -73,3 +73,4 @@ export default class Su57 extends BaseFighter {
         ctx.restore();
     }
 }
+

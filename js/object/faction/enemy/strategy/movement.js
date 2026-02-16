@@ -30,6 +30,18 @@ export const MovementStrategies = {
         }
     },
 
+    // Zigzag: stable side-to-side motion while descending.
+    ZIGZAG: {
+        update: (enemy, dt) => {
+            enemy.y += enemy.speed * dt;
+            enemy.flightTime = (enemy.flightTime || 0) + dt;
+            const amplitude = enemy.amplitude || 90;
+            const frequency = enemy.frequency || 3.4;
+            if (!enemy.centerX) enemy.centerX = enemy.x;
+            enemy.x = enemy.centerX + Math.sin(enemy.flightTime * frequency) * amplitude;
+        }
+    },
+
     // Tracker: Slowly rotates towards player
     TRACKER: {
         update: (enemy, dt) => {

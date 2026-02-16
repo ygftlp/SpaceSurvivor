@@ -1,199 +1,220 @@
-
 // Weapon Strategies
 // Each strategy implements: update(enemy, dt)
 
+const canUpdateWeapon = (enemy, dt) => {
+    if (!enemy || !enemy.active || !enemy.scene) return false;
+    if (enemy.scene.isPaused || enemy.scene.gameEnded) return false;
+    if (!enemy.hasEnteredView) return false;
+    if ((enemy.fireEnableDelay || 0) > 0) {
+        enemy.fireEnableDelay = Math.max(0, enemy.fireEnableDelay - dt);
+        return false;
+    }
+    if (typeof enemy.scene.isEnemyInFireWindow === 'function' && !enemy.scene.isEnemyInFireWindow(enemy)) return false;
+    if ((enemy.weaponWarmup || 0) > 0) {
+        enemy.weaponWarmup = Math.max(0, enemy.weaponWarmup - dt);
+        return false;
+    }
+    return true;
+};
+
+const getCooldownScale = (enemy) => {
+    const t = (enemy && enemy.scene && enemy.scene.waveManager && Number.isFinite(enemy.scene.waveManager.levelTime))
+        ? enemy.scene.waveManager.levelTime
+        : 999;
+
+    // Early run gets a softer fire cadence.
+    if (t <= 20) return 1.35 - (t / 20) * 0.25; // 1.35 -> 1.10
+    if (t <= 40) return 1.10 - ((t - 20) / 20) * 0.10; // 1.10 -> 1.00
+    return 1.0;
+};
+
+const limitVolleyCount = (enemy, desired, min = 1) => {
+    const t = (enemy && enemy.scene && enemy.scene.waveManager && Number.isFinite(enemy.scene.waveManager.levelTime))
+        ? enemy.scene.waveManager.levelTime
+        : 999;
+    if (t < 20) return Math.max(min, Math.min(desired, 2));
+    if (t < 35) return Math.max(min, Math.min(desired, 3));
+    return Math.max(min, desired);
+};
+
+const tickFire = (enemy, dt, baseCadence) => {
+    const seed = Number.isFinite(enemy.fireTimer) ? enemy.fireTimer : baseCadence;
+    enemy.fireTimer = seed - dt;
+    return enemy.fireTimer <= 0;
+};
+
+const resetFire = (enemy, cadence) => {
+    enemy.fireTimer = cadence * getCooldownScale(enemy);
+};
+
+const ensureDamage = (enemy, cfg) => {
+    if (cfg.damage === undefined && enemy.damage) {
+        cfg.damage = enemy.damage;
+    }
+    return cfg;
+};
+
 export const WeaponStrategies = {
-    // None: Just a body collision enemy
     NONE: {
-        update: (enemy, dt) => {
-            // Do nothing
-        }
+        update: () => {}
     },
 
-    // Standard Gun: Fires straight down
     PEA_SHOOTER: {
         update: (enemy, dt) => {
-            enemy.fireTimer = (enemy.fireTimer || 0) - dt;
-            if (enemy.fireTimer <= 0) {
-                // Fire
-                if (enemy.scene && enemy.scene.spawnEnemyBullet) {
-                    const cfg = enemy.config.weaponConfig || {};
-                    // Ensure damage is passed from enemy stats if not in config
-                    if (cfg.damage === undefined && enemy.damage) {
-                        cfg.damage = enemy.damage;
-                    }
-                    const speed = cfg.speed || 300;
-                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
-                }
-                enemy.fireTimer = enemy.fireRate || 2.0; // Reset
+            if (!canUpdateWeapon(enemy, dt)) return;
+            const cadence = enemy.fireRate || 2.0;
+            if (!tickFire(enemy, dt, cadence)) return;
+
+            if (enemy.scene && enemy.scene.spawnEnemyBullet) {
+                const cfg = ensureDamage(enemy, enemy.config.weaponConfig || {});
+                const speed = cfg.speed || 300;
+                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
             }
+            resetFire(enemy, cadence);
         }
     },
 
-    // Spread: Three bullets fan out
     SPREAD: {
         update: (enemy, dt) => {
-            enemy.fireTimer = (enemy.fireTimer || 0) - dt;
-            if (enemy.fireTimer <= 0) {
-                if (enemy.scene && enemy.scene.spawnEnemyBullet) {
-                    const cfg = enemy.config.weaponConfig || {};
-                    const speed = cfg.speed || 300;
-                    
-                    // Center
-                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
-                    // Left
-                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, -15, speed, cfg); // Use degrees if Bullet uses degrees? Bullet uses degrees.
-                    // Right
-                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 15, speed, cfg);
-                }
-                enemy.fireTimer = enemy.fireRate || 3.0;
+            if (!canUpdateWeapon(enemy, dt)) return;
+            const cadence = enemy.fireRate || 3.0;
+            if (!tickFire(enemy, dt, cadence)) return;
+
+            if (enemy.scene && enemy.scene.spawnEnemyBullet) {
+                const cfg = ensureDamage(enemy, enemy.config.weaponConfig || {});
+                const speed = cfg.speed || 300;
+                const count = limitVolleyCount(enemy, 3);
+                if (count >= 1) enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
+                if (count >= 2) enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, -15, speed, cfg);
+                if (count >= 3) enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 15, speed, cfg);
             }
+            resetFire(enemy, cadence);
         }
     },
 
-    // Rapid: Fast low damage shots
     RAPID: {
         update: (enemy, dt) => {
-            enemy.fireTimer = (enemy.fireTimer || 0) - dt;
-            if (enemy.fireTimer <= 0) {
-                if (enemy.scene && enemy.scene.spawnEnemyBullet) {
-                    const cfg = enemy.config.weaponConfig || {};
-                    const speed = (cfg.speed || 300) * 1.2;
-                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
-                }
-                enemy.fireTimer = 0.5; // Fast
+            if (!canUpdateWeapon(enemy, dt)) return;
+            const cadence = 0.5;
+            if (!tickFire(enemy, dt, cadence)) return;
+
+            if (enemy.scene && enemy.scene.spawnEnemyBullet) {
+                const cfg = ensureDamage(enemy, enemy.config.weaponConfig || {});
+                const speed = (cfg.speed || 300) * 1.2;
+                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
             }
+            resetFire(enemy, cadence);
         }
     },
 
-    // Sniper: Fast bullet, slow rate
     SNIPER: {
         update: (enemy, dt) => {
-             enemy.fireTimer = (enemy.fireTimer || 0) - dt;
-             if (enemy.fireTimer <= 0) {
-                 if (enemy.scene && enemy.scene.spawnEnemyBullet) {
-                     const cfg = enemy.config.weaponConfig || {};
-                     const speed = (cfg.speed || 300) * 2.0;
-                     enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
-                 }
-                 enemy.fireTimer = 4.0; // Slow
-             }
+            if (!canUpdateWeapon(enemy, dt)) return;
+            const cadence = 4.0;
+            if (!tickFire(enemy, dt, cadence)) return;
+
+            if (enemy.scene && enemy.scene.spawnEnemyBullet) {
+                const cfg = ensureDamage(enemy, enemy.config.weaponConfig || {});
+                const speed = (cfg.speed || 300) * 2.0;
+                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
+            }
+            resetFire(enemy, cadence);
         }
     },
 
-    // Procedural: The Ultimate Weapon Generator
-    // Reads enemy.config.weaponConfig to determine attack pattern
     PROCEDURAL: {
         update: (enemy, dt) => {
-            const cfg = enemy.config.weaponConfig || {};
-            // Ensure damage is passed from enemy stats if not in config
-            if (cfg.damage === undefined && enemy.damage) {
-                cfg.damage = enemy.damage;
-            }
-            enemy.fireTimer = (enemy.fireTimer || 0) - dt;
-            
-            if (enemy.fireTimer <= 0) {
-                if (enemy.scene && enemy.scene.spawnEnemyBullet) {
-                    const speed = cfg.speed || 300;
-                    
-                    // Pattern Logic
-                    switch (cfg.pattern) {
-                        case 'SPREAD':
-                            // N-way spread
-                            const count = cfg.count || 3;
-                            const spread = cfg.spread || 30; // Degrees
-                            const startAngle = -spread / 2;
-                            const step = spread / (count - 1 || 1);
-                            
-                            for (let i = 0; i < count; i++) {
-                                const angle = startAngle + step * i;
-                                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, angle, speed, cfg);
-                            }
-                            break;
-                            
-                        case 'RING':
-                            // 360 burst
-                            const rCount = cfg.count || 8;
-                            for (let i = 0; i < rCount; i++) {
-                                const angle = (360 / rCount) * i;
-                                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, angle, speed, cfg);
-                            }
-                            break;
-                            
-                        case 'SPIRAL_EMITTER':
-                            // Rotating stream
-                            enemy.weaponAngle = (enemy.weaponAngle || 0) + (cfg.spinSpeed || 10);
-                            enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, enemy.weaponAngle, speed, cfg);
-                            // Fire very fast for spiral
-                            enemy.fireTimer = 0.1; 
-                            return; // Override timer reset
-                            
-                        case 'V_SHAPE':
-                            // Backwards V
-                            const vCount = 2;
-                            enemy.scene.spawnEnemyBullet(enemy.x - 20, enemy.y, 0, speed, cfg);
-                            enemy.scene.spawnEnemyBullet(enemy.x + 20, enemy.y, 0, speed, cfg);
-                            break;
-                            
-                        case 'CROSS':
-                            // + Shape (0, 90, 180, 270)
-                            const cCount = 4;
-                            const baseAngle = (enemy.weaponAngle || 0); // Can rotate
-                            enemy.weaponAngle = baseAngle + (cfg.spinSpeed || 0);
-                            
-                            for (let i = 0; i < cCount; i++) {
-                                const angle = baseAngle + (90 * i);
-                                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, angle, speed, cfg);
-                            }
-                            break;
+            if (!canUpdateWeapon(enemy, dt)) return;
 
-                        case 'WAVE':
-                            // Sine wave offset position
-                            const wPhase = (Date.now() / 500) * (cfg.spinSpeed || 5);
-                            const wOffset = Math.sin(wPhase) * (cfg.spread || 20);
-                            enemy.scene.spawnEnemyBullet(enemy.x + wOffset, enemy.y + enemy.height/2, 0, speed, cfg);
-                            enemy.fireTimer = 0.15; // Fast fire
-                            return;
+            const cfg = ensureDamage(enemy, enemy.config.weaponConfig || {});
+            const cadence = enemy.fireRate || cfg.rate || 2.0;
+            if (!tickFire(enemy, dt, cadence)) return;
+            if (!(enemy.scene && enemy.scene.spawnEnemyBullet)) return;
 
-                        case 'TORNADO':
-                            // Two spiraling streams in opposite directions
-                            enemy.weaponAngle = (enemy.weaponAngle || 0) + (cfg.spinSpeed || 5);
-                            enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, enemy.weaponAngle, speed, cfg);
-                            enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, -enemy.weaponAngle, speed, cfg);
-                            enemy.fireTimer = 0.1;
-                            return;
+            const speed = cfg.speed || 300;
+            const scale = getCooldownScale(enemy);
 
-                        case 'TARGETED_SPREAD':
-                            // Fires towards player (if scene provides player info) but we simulate it with simple tracking or just random if no player
-                            // For now, assume simple spread but focused
-                            const tCount = cfg.count || 3;
-                            const tSpread = 15; // Tight spread
-                            const tStart = -tSpread / 2;
-                            const tStep = tSpread / (tCount - 1 || 1);
-                            
-                            for (let i = 0; i < tCount; i++) {
-                                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, tStart + tStep * i, speed, cfg);
-                            }
-                            break;
-
-                        case 'RANDOM':
-                            // Shotgun spray
-                            const rndCount = cfg.count || 5;
-                            for (let i = 0; i < rndCount; i++) {
-                                const angle = (Math.random() - 0.5) * (cfg.spread || 45);
-                                const spdVar = speed * (0.8 + Math.random() * 0.4);
-                                enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height/2, angle, spdVar, cfg);
-                            }
-                            break;
-
-                        case 'STRAIGHT':
-                        default:
-                            enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
-                            break;
+            switch (cfg.pattern) {
+                case 'SPREAD': {
+                    const count = limitVolleyCount(enemy, cfg.count || 3);
+                    const spread = cfg.spread || 30;
+                    const startAngle = -spread / 2;
+                    const step = spread / (count - 1 || 1);
+                    for (let i = 0; i < count; i++) {
+                        const angle = startAngle + step * i;
+                        enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, angle, speed, cfg);
                     }
+                    break;
                 }
-                enemy.fireTimer = enemy.fireRate || cfg.rate || 2.0;
+                case 'RING': {
+                    const ringCount = limitVolleyCount(enemy, cfg.count || 8, 2);
+                    for (let i = 0; i < ringCount; i++) {
+                        const angle = (360 / ringCount) * i;
+                        enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, angle, speed, cfg);
+                    }
+                    break;
+                }
+                case 'SPIRAL_EMITTER': {
+                    enemy.weaponAngle = (enemy.weaponAngle || 0) + (cfg.spinSpeed || 10);
+                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, enemy.weaponAngle, speed, cfg);
+                    enemy.fireTimer = 0.1 * scale;
+                    return;
+                }
+                case 'V_SHAPE': {
+                    enemy.scene.spawnEnemyBullet(enemy.x - 20, enemy.y, 0, speed, cfg);
+                    enemy.scene.spawnEnemyBullet(enemy.x + 20, enemy.y, 0, speed, cfg);
+                    break;
+                }
+                case 'CROSS': {
+                    const count = 4;
+                    const baseAngle = enemy.weaponAngle || 0;
+                    enemy.weaponAngle = baseAngle + (cfg.spinSpeed || 0);
+                    for (let i = 0; i < count; i++) {
+                        const angle = baseAngle + (90 * i);
+                        enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, angle, speed, cfg);
+                    }
+                    break;
+                }
+                case 'WAVE': {
+                    const phase = (Date.now() / 500) * (cfg.spinSpeed || 5);
+                    const offset = Math.sin(phase) * (cfg.spread || 20);
+                    enemy.scene.spawnEnemyBullet(enemy.x + offset, enemy.y + enemy.height / 2, 0, speed, cfg);
+                    enemy.fireTimer = 0.15 * scale;
+                    return;
+                }
+                case 'TORNADO': {
+                    enemy.weaponAngle = (enemy.weaponAngle || 0) + (cfg.spinSpeed || 5);
+                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, enemy.weaponAngle, speed, cfg);
+                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, -enemy.weaponAngle, speed, cfg);
+                    enemy.fireTimer = 0.1 * scale;
+                    return;
+                }
+                case 'TARGETED_SPREAD': {
+                    const count = limitVolleyCount(enemy, cfg.count || 3);
+                    const spread = 15;
+                    const start = -spread / 2;
+                    const step = spread / (count - 1 || 1);
+                    for (let i = 0; i < count; i++) {
+                        enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, start + step * i, speed, cfg);
+                    }
+                    break;
+                }
+                case 'RANDOM': {
+                    const count = limitVolleyCount(enemy, cfg.count || 5, 2);
+                    for (let i = 0; i < count; i++) {
+                        const angle = (Math.random() - 0.5) * (cfg.spread || 45);
+                        const speedVar = speed * (0.8 + Math.random() * 0.4);
+                        enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, angle, speedVar, cfg);
+                    }
+                    break;
+                }
+                case 'STRAIGHT':
+                default:
+                    enemy.scene.spawnEnemyBullet(enemy.x, enemy.y + enemy.height / 2, 0, speed, cfg);
+                    break;
             }
+
+            resetFire(enemy, cadence);
         }
     }
 };

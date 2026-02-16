@@ -38,6 +38,10 @@ export default class Player {
         this.effectiveStats = {}; // Actual stats used for shooting
         this.refreshStats();
 
+        // ========== 三维高度层系统 (3D Altitude System) - 已移除 ==========
+        // 为了简化操作，移除了手动高度控制，改为自动高度适应
+        this.altitude = 500; // 固定为中空
+
         this.maxEnergy = 100;
         this.energy = 100;
         this.energyRegenRate = 12;
@@ -92,7 +96,10 @@ export default class Player {
         const now = Date.now();
         const dtSeconds = Math.max(0, deltaTime);
         
-        // 更新实际速度
+        // ========== 高度系统更新 (已移除) ==========
+        // 保持高度固定
+        
+        // 更新实际速度 (无高度惩罚)
         const actualSpeed = this.speed;
         
         // ========== 更新战机状态（特技冷却等） ==========
@@ -259,11 +266,8 @@ export default class Player {
      * 位置：右下角，与操作杆（左下）不重叠
      */
     renderAbilityButton(ctx, screenWidth, screenHeight) {
-        const safeArea = GameConfig.SafeArea || { left: 20, top: 20 };
-        const rightMargin = (safeArea.left || 20) + 60;
-        const bottomMargin = 210;
-        const btnX = screenWidth - rightMargin;  // 右下角，避免与左下摇杆重叠
-        const btnY = screenHeight - bottomMargin;
+        const btnX = 80;  // 左下角
+        const btnY = screenHeight - 180;  // 在高度按钮上方
         const btnRadius = 25;  // 50x50 大小
         
         // 获取战机特技状态
@@ -289,10 +293,7 @@ export default class Player {
             icon = '盾';
         }
         
-        if (!ability) {
-            this.abilityBtn = null;
-            return;
-        }
+        if (!ability) return;
         
         // 计算按钮状态
         const isReady = ability.ready;
@@ -331,20 +332,6 @@ export default class Player {
         
         ctx.fill();
         ctx.shadowBlur = 0;
-
-        // 冷却进度遮罩（更直观）
-        if (!isReady && !isActive) {
-            const totalCooldown = ability.cooldownTime || 8;
-            const progress = Math.max(0, Math.min(1, (ability.cooldown || 0) / totalCooldown));
-            if (progress > 0) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-                ctx.beginPath();
-                ctx.moveTo(btnX, btnY);
-                ctx.arc(btnX, btnY, btnRadius - 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress, false);
-                ctx.closePath();
-                ctx.fill();
-            }
-        }
         
         // 按钮边框
         ctx.strokeStyle = isReady ? btnColor : '#666';

@@ -1,14 +1,17 @@
-/**
- * Author: yangguangftlp@163.com
- * Date: 2026-01-31
- * Description: 个人中心场景 (ProfileScene)。包含账户、设置、战机、装备管理。
- */
-
-import BaseScene from './baseScene.js';
+﻿import BaseScene from './baseScene.js';
 import { GameConfig } from '../config.js';
 import RenderUtils from '../utils/renderUtils.js';
 import { dataManager } from '../manager/dataManager.js';
 import FighterFactory from '../object/faction/player/fighter/FighterFactory.js';
+
+const TABS = [
+    { key: 'account', label: '账户' },
+    { key: 'settings', label: '设置' },
+    { key: 'fighter', label: '战机' },
+    { key: 'equipment', label: '装备' }
+];
+
+const FIGHTER_ORDER = ['J-20', 'F-22', 'Su-57', 'F-16'];
 
 export default class ProfileScene extends BaseScene {
     constructor(sceneManager) {
@@ -16,331 +19,373 @@ export default class ProfileScene extends BaseScene {
         this.width = GameConfig.Screen.width;
         this.height = this.sceneManager.game.logicHeight || 1280;
 
-        // Tabs
-        this.tabs = ['账户', '设置', '战机', '装备'];
-        this.currentTab = '账户';
+        const safeTop = GameConfig.SafeArea.top || 20;
+        const safeLeft = Number.isFinite(GameConfig.SafeArea.left) ? GameConfig.SafeArea.left : 20;
+        const capsuleH = GameConfig.SafeArea.height || 38;
 
-        // 布局区域
-        this.sidebarWidth = 150;
-
-        // 按钮区域 (动态计算)
-        // Align with Menu Capsule: Top = SafeArea.top, Height = SafeArea.height (usually 32-40px matches capsule)
-        // We use SafeArea.top for Y, and maybe similar height
-        const safeTop = GameConfig.SafeArea.top;
-        const safeLeft = (GameConfig.SafeArea.left !== undefined) ? GameConfig.SafeArea.left : 20;
-        const capsuleH = GameConfig.SafeArea.height;
-
-        // Let's make the back button look like a capsule too or just align center
-        this.btnBack = { x: safeLeft, y: safeTop, w: 80, h: capsuleH };
+        this.sidebarWidth = 128;
+        this.currentTab = 'account';
         this.tabButtons = [];
+        this.fighterButtons = [];
+        this.toast = null;
+
+        this.btnBack = { x: safeLeft, y: safeTop, w: 84, h: capsuleH };
     }
 
     enter(params) {
         this.height = this.sceneManager.game.logicHeight;
+        this.btnBack.y = GameConfig.SafeArea.top || 20;
+        this.btnBack.h = GameConfig.SafeArea.height || 38;
 
-        // Re-calc in case safe area changed (mostly static though)
-        // Ensure accurate y
-        this.btnBack.y = GameConfig.SafeArea.top;
-        this.btnBack.h = GameConfig.SafeArea.height;
-        console.log('ProfileScene: Enter', params);
-
-        // Map English keys to Chinese tabs if needed
         const tabMap = {
-            'Account': '账户',
-            'Settings': '设置',
-            'Fighter': '战机',
-            'Equipment': '装备'
+            Account: 'account',
+            Settings: 'settings',
+            Fighter: 'fighter',
+            Equipment: 'equipment',
+            账户: 'account',
+            设置: 'settings',
+            战机: 'fighter',
+            装备: 'equipment'
         };
+        const tabKey = params && params.tab ? tabMap[params.tab] : null;
+        this.currentTab = tabKey || 'account';
 
-        // 如果传递了 tab 参数，则跳转到指定 tab
-        if (params && params.tab) {
-            // Try direct match or mapped match
-            if (this.tabs.includes(params.tab)) {
-                this.currentTab = params.tab;
-            } else if (tabMap[params.tab]) {
-                this.currentTab = tabMap[params.tab];
-            }
-        } else {
-            this.currentTab = '账户';
-        }
-
-        // 初始化 Tab 按钮位置
         this.initTabs();
     }
 
     initTabs() {
         this.tabButtons = [];
-        let startY = 150;
-        const h = 60;
-        const gap = 20;
-
-        this.tabs.forEach((tab, i) => {
+        const startY = 150;
+        const h = 56;
+        const gap = 14;
+        TABS.forEach((tab, i) => {
             this.tabButtons.push({
-                name: tab,
-                x: 0,
+                key: tab.key,
+                label: tab.label,
+                x: 10,
                 y: startY + i * (h + gap),
-                w: this.sidebarWidth,
-                h: h
+                w: this.sidebarWidth - 14,
+                h
             });
         });
     }
 
     update(dt) {
-        // ...
+        if (!this.toast) return;
+        this.toast.life -= dt;
+        if (this.toast.life <= 0) this.toast = null;
+    }
+
+    showToast(text, color = '#74b9ff', life = 1.6) {
+        this.toast = { text, color, life };
     }
 
     render(ctx) {
-        // Reset dynamic hitboxes
         this.fighterButtons = [];
-
-        // 1. 全屏深色背景
-        ctx.fillStyle = '#0f1020';
-        ctx.fillRect(0, 0, this.width, this.height);
-
-        // 2. 侧边栏背景
-        ctx.fillStyle = '#16172e';
-        ctx.fillRect(0, 0, this.sidebarWidth, this.height);
-
-        // 3. 返回按钮
-        RenderUtils.fillRoundRect(ctx, this.btnBack.x, this.btnBack.y, this.btnBack.w, this.btnBack.h, this.btnBack.h / 2, '#333');
-        ctx.fillStyle = '#fff';
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        // Center text vertically: y + h/2 + approx half font size adjustment (~7px for 20px font)
-        ctx.fillText('< 返回', this.btnBack.x + this.btnBack.w / 2, this.btnBack.y + this.btnBack.h / 2 + 7);
-
-        // 4. 渲染 Tabs
-        this.tabButtons.forEach(btn => {
-            const isSelected = (this.currentTab === btn.name);
-            const color = isSelected ? '#00A8FF' : '#333';
-
-            // 绘制 Tab 按钮
-            RenderUtils.fillRoundRect(ctx, btn.x + 10, btn.y, btn.w - 10, btn.h, 10, color);
-
-            ctx.fillStyle = '#fff';
-            ctx.font = '20px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(btn.name, btn.x + 30, btn.y + 38);
-        });
-
-        // 5. 渲染内容区域 (右侧)
+        this.renderBackground(ctx);
+        this.renderSidebar(ctx);
         this.renderContent(ctx);
+        this.renderToast(ctx);
     }
 
-    renderContent(ctx) {
-        const contentX = this.sidebarWidth + 20;
-        const contentY = 100;
-        const boxW = this.width - this.sidebarWidth - 40;
-        const boxH = this.height - 120;
+    renderBackground(ctx) {
+        const grad = ctx.createLinearGradient(0, 0, 0, this.height);
+        grad.addColorStop(0, '#0a1024');
+        grad.addColorStop(1, '#131a35');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, this.width, this.height);
 
-        // 绘制内容面板框
-        RenderUtils.drawPanel(ctx, contentX, contentY, boxW, boxH);
-
-        // 根据当前 Tab 绘制不同内容
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#fff';
-
-        if (this.currentTab === '账户') {
-            this.renderAccount(ctx, contentX, contentY);
-        } else if (this.currentTab === '装备') {
-            this.renderEquipment(ctx, contentX, contentY);
-        } else if (this.currentTab === '战机') {
-            this.renderFighter(ctx, contentX, contentY, boxW, boxH);
-        } else {
-            // WIP
-            ctx.font = '30px Arial';
-            ctx.fillText(`${this.currentTab} 开发中...`, contentX + 50, contentY + 100);
+        ctx.strokeStyle = 'rgba(0,168,255,0.08)';
+        ctx.lineWidth = 1;
+        for (let y = 0; y < this.height; y += 56) {
+            ctx.beginPath();
+            ctx.moveTo(this.sidebarWidth, y);
+            ctx.lineTo(this.width, y);
+            ctx.stroke();
         }
     }
 
-    renderFighter(ctx, x, y, w, h) {
-        const fighters = FighterFactory.getAllFighters();
+    renderSidebar(ctx) {
+        ctx.fillStyle = 'rgba(10, 15, 34, 0.9)';
+        ctx.fillRect(0, 0, this.sidebarWidth, this.height);
+
+        RenderUtils.fillRoundRect(
+            ctx,
+            this.btnBack.x,
+            this.btnBack.y,
+            this.btnBack.w,
+            this.btnBack.h,
+            this.btnBack.h / 2,
+            'rgba(255,255,255,0.12)',
+            'rgba(255,255,255,0.25)',
+            1
+        );
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('返回', this.btnBack.x + this.btnBack.w / 2, this.btnBack.y + this.btnBack.h / 2);
+        ctx.textBaseline = 'alphabetic';
+
+        this.tabButtons.forEach((tab) => {
+            const active = tab.key === this.currentTab;
+            RenderUtils.fillRoundRect(
+                ctx,
+                tab.x,
+                tab.y,
+                tab.w,
+                tab.h,
+                10,
+                active ? '#1696e8' : 'rgba(255,255,255,0.14)'
+            );
+            ctx.fillStyle = '#ffffff';
+            ctx.font = active ? 'bold 26px Arial' : '22px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(tab.label, tab.x + 18, tab.y + 36);
+        });
+    }
+
+    renderContent(ctx) {
+        const x = this.sidebarWidth + 14;
+        const y = 96;
+        const w = this.width - this.sidebarWidth - 28;
+        const h = this.height - 112;
+
+        RenderUtils.drawCyberPanel(ctx, x, y, w, h, { color: '#00ccff', bgAlpha: 0.22, corner: 14 });
+
+        if (this.currentTab === 'account') {
+            this.renderAccount(ctx, x, y, w, h);
+        } else if (this.currentTab === 'equipment') {
+            this.renderEquipment(ctx, x, y, w, h);
+        } else if (this.currentTab === 'fighter') {
+            this.renderFighters(ctx, x, y, w, h);
+        } else {
+            this.renderSettings(ctx, x, y, w, h);
+        }
+    }
+
+    renderFighters(ctx, x, y, w, h) {
+        const titleY = y + 46;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('战机机库', x + 24, titleY);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '16px Arial';
+        ctx.fillText('选择当前出战机型，不同战机拥有不同技能定位', x + 24, titleY + 28);
+
         const currentId = dataManager.data.currentFighter;
+        const unlocked = dataManager.data.unlockedFighters || [];
+        const fighters = FIGHTER_ORDER.filter((id) => FighterFactory.getAllFighters().includes(id));
 
-        ctx.font = '24px Arial';
-        ctx.fillStyle = '#fff';
-        ctx.fillText('选择战机:', x + 30, y + 50);
+        const listX = x + 20;
+        let cardY = y + 98;
+        const cardW = w - 40;
+        const cardH = 118;
+        const gap = 14;
 
-        // Simple List for now
-        let startY = y + 100;
-        fighters.forEach(fid => {
-            // Get Info from Factory (Cheap instantiation or static info)
-            const f = FighterFactory.getFighterInfo(fid);
+        fighters.forEach((id) => {
+            const info = FighterFactory.getFighterInfo(id);
+            const isUnlocked = unlocked.includes(id);
+            const isCurrent = currentId === id;
 
-            const isUnlocked = dataManager.data.unlockedFighters.includes(fid);
-            const isEquipped = (currentId === fid);
+            RenderUtils.fillRoundRect(
+                ctx,
+                listX,
+                cardY,
+                cardW,
+                cardH,
+                12,
+                isCurrent ? 'rgba(26,106,230,0.52)' : 'rgba(255,255,255,0.11)',
+                isCurrent ? 'rgba(98,196,255,0.92)' : 'rgba(255,255,255,0.2)',
+                isCurrent ? 2 : 1
+            );
 
-            // Card Bg
-            const cardH = 120;
-            const color = isEquipped ? '#1e3799' : '#333';
-            RenderUtils.fillRoundRect(ctx, x + 20, startY, w - 40, cardH, 10, color);
-
-            // Icon / Image
-            const fighterSize = 64; // Requested Size 64
-            const tempFighter = FighterFactory.createFighter(fid);
-
+            const iconBox = { x: listX + 12, y: cardY + 14, w: 84, h: 84 };
+            RenderUtils.fillRoundRect(ctx, iconBox.x, iconBox.y, iconBox.w, iconBox.h, 10, 'rgba(0,0,0,0.25)');
             ctx.save();
-            // Align Icon on the left
-            ctx.translate(x + 80, startY + cardH / 2);
-            tempFighter.render(ctx, fighterSize);
+            ctx.beginPath();
+            ctx.rect(iconBox.x, iconBox.y, iconBox.w, iconBox.h);
+            ctx.clip();
+            const fighter = FighterFactory.createFighter(id);
+            ctx.translate(iconBox.x + iconBox.w / 2, iconBox.y + iconBox.h / 2 + 6);
+            fighter.render(ctx, 34);
             ctx.restore();
 
-            // Text Info
-            const textX = x + 140; // Fixed offset for text
+            const textX = iconBox.x + iconBox.w + 14;
+            const textW = cardW - (textX - listX) - 124;
+            const name = info.name || id;
+            const desc = info.desc || '暂无描述';
+            const statText = `速度 ${info.speed || 0}  生命 ${info.hp || 0}`;
 
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 24px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px Arial';
             ctx.textAlign = 'left';
-            ctx.fillText(f.name, textX, startY + 40);
+            ctx.fillText(name, textX, cardY + 36);
 
-            ctx.fillStyle = '#aaa';
-            ctx.font = '16px Arial';
-            ctx.fillText(f.desc, textX, startY + 70);
+            ctx.fillStyle = '#d0d7e5';
+            ctx.font = '18px Arial';
+            const descLine = this.fitText(ctx, desc, textW);
+            ctx.fillText(descLine, textX, cardY + 64);
 
-            // Stats
-            ctx.fillStyle = '#00ffe1';
-            ctx.font = '14px Arial';
-            ctx.fillText(`速度:${f.speed}  生命:${f.hp}`, textX, startY + 95);
+            ctx.fillStyle = '#38efc4';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText(statText, textX, cardY + 92);
 
-            // Action Button
-            const btnW = 100, btnH = 40;
-            const btnX = x + w - 140; // Keep button on right side
-            const btnY = startY + (cardH - btnH) / 2;
-
-            if (isEquipped) {
-                ctx.fillStyle = '#4cd137';
-                ctx.font = 'bold 18px Arial';
-                ctx.fillText('已装备', btnX + 10, btnY + 25);
+            const btn = { x: listX + cardW - 106, y: cardY + 34, w: 90, h: 50 };
+            if (isCurrent) {
+                RenderUtils.fillRoundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, '#43d26a');
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('已装备', btn.x + btn.w / 2, btn.y + 32);
             } else if (isUnlocked) {
-                // Equip Button
-                RenderUtils.fillRoundRect(ctx, btnX, btnY, btnW, btnH, 5, '#0984e3');
-                ctx.fillStyle = '#fff';
+                RenderUtils.fillRoundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, '#1293e8');
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 22px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('装备', btnX + btnW / 2, btnY + 26);
-
-                if (!this.fighterButtons) this.fighterButtons = [];
-                this.fighterButtons.push({ id: fid, action: 'equip', x: btnX, y: btnY, w: btnW, h: btnH });
-
+                ctx.fillText('装备', btn.x + btn.w / 2, btn.y + 32);
+                this.fighterButtons.push({ x: btn.x, y: btn.y, w: btn.w, h: btn.h, id, action: 'equip' });
             } else {
-                // Unlock Button
-                RenderUtils.fillRoundRect(ctx, btnX, btnY, btnW, btnH, 5, '#e17055');
-                ctx.fillStyle = '#fff';
+                RenderUtils.fillRoundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, '#ef7c5d');
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 20px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('解锁', btnX + btnW / 2, btnY + 16);
-                ctx.font = '12px Arial';
-                ctx.fillText(`$${f.unlockCost}`, btnX + btnW / 2, btnY + 32);
-
-                if (!this.fighterButtons) this.fighterButtons = [];
-                this.fighterButtons.push({ id: fid, action: 'unlock', x: btnX, y: btnY, w: btnW, h: btnH });
+                ctx.fillText('解锁', btn.x + btn.w / 2, btn.y + 20);
+                ctx.font = 'bold 14px Arial';
+                ctx.fillText(`${info.unlockCost || 0} 金币`, btn.x + btn.w / 2, btn.y + 40);
+                this.fighterButtons.push({ x: btn.x, y: btn.y, w: btn.w, h: btn.h, id, action: 'unlock' });
             }
 
-            startY += cardH + 20;
+            cardY += cardH + gap;
         });
     }
 
     renderAccount(ctx, x, y) {
-        // 头像
-        const avatarSize = 100;
-        RenderUtils.fillRoundRect(ctx, x + 50, y + 50, avatarSize, avatarSize, 50, '#555');
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 38px Arial';
+        ctx.fillText('指挥官档案', x + 30, y + 52);
 
-        // 文字信息
-        ctx.font = 'bold 32px Arial';
-        ctx.fillText('指挥官', x + 180, y + 90);
-
+        RenderUtils.fillRoundRect(ctx, x + 32, y + 88, 120, 120, 60, 'rgba(255,255,255,0.18)');
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText('指挥官', x + 182, y + 136);
+        ctx.fillStyle = '#c8d6e5';
         ctx.font = '24px Arial';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText(`等级: ${dataManager.data.playerLevel}`, x + 180, y + 130);
+        ctx.fillText(`等级：${dataManager.data.playerLevel}`, x + 182, y + 176);
 
-        ctx.fillText(`金币: ${dataManager.getGold()}`, x + 50, y + 250);
-        ctx.fillText(`钻石: ${dataManager.data.diamonds}`, x + 50, y + 300);
+        const rows = [
+            `金币：${dataManager.getGold()}`,
+            `钻石：${dataManager.data.diamonds || 0}`,
+            `当前战机：${dataManager.data.currentFighter || 'J-20'}`
+        ];
+        rows.forEach((line, i) => {
+            ctx.fillStyle = '#e5ecf6';
+            ctx.font = '24px Arial';
+            ctx.fillText(line, x + 34, y + 280 + i * 56);
+        });
     }
 
     renderEquipment(ctx, x, y) {
-        // 复用 HomeScene 的装备槽位逻辑，但这里以网格形式展示
-        ctx.font = '24px Arial';
-        ctx.fillText('当前装备:', x + 30, y + 50);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 38px Arial';
+        ctx.fillText('装备总览', x + 30, y + 52);
 
-        const slots = ['主炮', '装甲', '僚机', '雷达'];
-        const equipment = dataManager.data.equipment;
-        const slotSize = 80;
-        const gap = 20;
-
-        slots.forEach((name, i) => {
-            const bx = x + 30 + i * (slotSize + gap);
-            const by = y + 100;
-
-            RenderUtils.fillRoundRect(ctx, bx, by, slotSize, slotSize, 10, '#333', '#666', 2);
-
-            // Name
-            ctx.fillStyle = '#aaa';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(name, bx + slotSize / 2, by - 5);
-
-            // Level
-            if (name === '主炮' && equipment.mainWeapon) {
-                const wp = equipment.mainWeapon;
-                ctx.fillStyle = GameConfig.Rarity[wp.rarity] || '#fff';
-                ctx.font = 'bold 20px Arial';
-                ctx.fillText(`Lv.${wp.level}`, bx + slotSize / 2, by + slotSize / 2 + 8);
-            }
+        const slots = [
+            { label: '主炮', value: dataManager.data.equipment.mainWeapon ? `Lv.${dataManager.data.equipment.mainWeapon.level}` : '未装备' },
+            { label: '装甲', value: '开发中' },
+            { label: '僚机', value: '开发中' },
+            { label: '雷达', value: '开发中' }
+        ];
+        slots.forEach((slot, i) => {
+            const rowY = y + 106 + i * 82;
+            RenderUtils.fillRoundRect(ctx, x + 24, rowY, this.width - this.sidebarWidth - 80, 64, 10, 'rgba(255,255,255,0.12)');
+            ctx.fillStyle = '#d7e6ff';
+            ctx.font = 'bold 26px Arial';
+            ctx.fillText(slot.label, x + 46, rowY + 40);
+            ctx.fillStyle = '#90f0da';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'right';
+            ctx.fillText(slot.value, this.width - 40, rowY + 40);
+            ctx.textAlign = 'left';
         });
+    }
 
-        // 模拟背包区域
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#fff';
+    renderSettings(ctx, x, y) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 38px Arial';
+        ctx.fillText('系统设置', x + 30, y + 52);
+        ctx.fillStyle = '#c8d6e5';
         ctx.font = '24px Arial';
-        ctx.fillText('仓库 (空):', x + 30, y + 250);
+        ctx.fillText('设置面板将在下一阶段补全。', x + 30, y + 120);
+    }
 
-        // 画几个空格子
-        for (let i = 0; i < 5; i++) {
-            RenderUtils.fillRoundRect(ctx, x + 30 + i * 90, y + 280, 80, 80, 10, '#222', '#444', 1);
+    renderToast(ctx) {
+        if (!this.toast) return;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, this.toast.life));
+        ctx.fillStyle = this.toast.color;
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.toast.text, this.width / 2, this.height - 34);
+        ctx.restore();
+    }
+
+    fitText(ctx, text, maxWidth) {
+        let out = String(text || '');
+        while (out.length > 0 && ctx.measureText(out).width > maxWidth) {
+            out = out.slice(0, -1);
         }
+        return out;
     }
 
     handleInput(type, x, y) {
-        if (type === 'touchstart') {
-            // Back Button
-            if (x >= this.btnBack.x && x <= this.btnBack.x + this.btnBack.w &&
-                y >= this.btnBack.y && y <= this.btnBack.y + this.btnBack.h) {
-                this.sceneManager.switchScene('HOME');
-                return;
-            }
+        if (type !== 'touchstart') return false;
 
-            // Tab Buttons
-            this.tabButtons.forEach(btn => {
-                if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
-                    this.currentTab = btn.name;
-                    // Reset dynamic buttons
-                    this.fighterButtons = [];
-                }
-            });
+        if (this.hitRect(x, y, this.btnBack)) {
+            this.sceneManager.switchScene('HOME');
+            return true;
+        }
 
-            // Fighter Buttons
-            if (this.currentTab === '战机' && this.fighterButtons) {
-                this.fighterButtons.forEach(btn => {
-                    // Check overlap with latest frame buttons
-                    if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
-                        const fInfo = FighterFactory.getFighterInfo(btn.id);
-                        if (btn.action === 'equip') {
-                            dataManager.setFighter(btn.id);
-                        } else if (btn.action === 'unlock') {
-                            const cost = fInfo.unlockCost;
-                            if (dataManager.getGold() >= cost) {
-                                dataManager.addGold(-cost); // Deduct gold
-                                dataManager.unlockFighter(btn.id);
-                                dataManager.setFighter(btn.id); // Auto equip
-                            } else {
-                                console.log('Not enough gold');
-                            }
-                        }
-                    }
-                });
+        for (let i = 0; i < this.tabButtons.length; i++) {
+            const tab = this.tabButtons[i];
+            if (this.hitRect(x, y, tab)) {
+                this.currentTab = tab.key;
+                return true;
             }
         }
+
+        if (this.currentTab !== 'fighter') return false;
+
+        for (let i = 0; i < this.fighterButtons.length; i++) {
+            const btn = this.fighterButtons[i];
+            if (!this.hitRect(x, y, btn)) continue;
+
+            const fInfo = FighterFactory.getFighterInfo(btn.id);
+            if (btn.action === 'equip') {
+                dataManager.setFighter(btn.id);
+                this.showToast(`已切换为 ${btn.id}`, '#2ecc71');
+                return true;
+            }
+
+            if (btn.action === 'unlock') {
+                const cost = fInfo.unlockCost || 0;
+                if (dataManager.getGold() >= cost) {
+                    dataManager.addGold(-cost);
+                    dataManager.unlockFighter(btn.id);
+                    dataManager.setFighter(btn.id);
+                    this.showToast(`已解锁并装备 ${btn.id}`, '#feca57');
+                } else {
+                    this.showToast('金币不足', '#ff8f70');
+                }
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    hitTest(x, y, btn) {
-        return x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h;
+    hitRect(x, y, rect) {
+        return rect && x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
     }
 }

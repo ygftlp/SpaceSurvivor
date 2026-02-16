@@ -51,6 +51,18 @@ export const GameConfig = {
         }
     },
 
+    // Runtime debug switches (enabled by 3-finger tap in main loop)
+    Debug: {
+        hitboxOverlay: false,
+        touchPointOverlay: true,
+        touchPointRadius: 18
+    },
+
+    Gameplay: {
+        // Avoid interrupting combat with modal popups on level-up.
+        autoSkillSelectInBattle: true
+    },
+
     init() {
         if (typeof wx !== 'undefined' && wx.getMenuButtonBoundingClientRect) {
             try {

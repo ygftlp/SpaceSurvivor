@@ -1,10 +1,10 @@
-import BaseFighter from './BaseFighter.js';
+﻿import BaseFighter from './BaseFighter.js';
 
 export default class F22 extends BaseFighter {
     constructor() {
         super();
         this.name = '猛禽 F-22';
-        this.desc = '【全能战神】空中优势战斗机。拥有矢量推力，机动性极强。';
+        this.desc = '【全能空优】空中优势战斗机，矢量推力带来极强机动。';
         this.hp = 100;
         this.speed = 12;
         this.damage = 14;
@@ -71,3 +71,4 @@ export default class F22 extends BaseFighter {
         ctx.restore();
     }
 }
+

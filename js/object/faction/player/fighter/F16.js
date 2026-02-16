@@ -1,13 +1,13 @@
-import BaseFighter from './BaseFighter.js';
+﻿import BaseFighter from './BaseFighter.js';
 
 export default class F16 extends BaseFighter {
     constructor() {
         super();
         this.name = '战隼 F-16';
-        this.desc = '轻型多用途战机，高推重比，机动灵活。';
+        this.desc = '【高速突击】轻型多用途战机，入门友好，机动灵活。';
         this.hp = 80; // Lower HP
-        this.speed = 14; // 12→14 (高速战机)
-        this.damage = 12; // 10→12 (标准火力)
+        this.speed = 14; // 12鈫?4 (楂橀€熸垬鏈?
+        this.damage = 12; // 10鈫?2 (鏍囧噯鐏姏)
         this.unlockCost = 800; // Cheaper than J-20/Su-57
         this.engineOffsets = [{ x: 0, y: 95 }]; // Single Engine
         this.thrustColor = '#ff9900'; // Orange/Yellow flame
@@ -304,3 +304,4 @@ export default class F16 extends BaseFighter {
         ctx.restore();
     }
 }
+
